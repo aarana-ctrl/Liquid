@@ -1,204 +1,237 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
-  UNIVERSITY,
-  MAJORS,
-  CATEGORY_LABELS,
-  fetchCompletedCourses,
+  UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS,
+  fetchCompletedCourses, parseTranscript,
 } from "./data.js";
 
-// ---------------------------------------------------------------------------
-// Quarter calendar (UW runs on quarters: Autumn / Winter / Spring, + Summer)
-// ---------------------------------------------------------------------------
+// ---- quarter calendar ------------------------------------------------------
 const TERMS = ["Autumn", "Winter", "Spring"];
 const NUM_YEARS = 4;
 const QUARTERS = [];
-for (let y = 1; y <= NUM_YEARS; y++) {
-  for (const t of TERMS) {
-    QUARTERS.push({ idx: QUARTERS.length, label: `${t}`, year: y, term: t });
-  }
-}
-const FULL_TIME_MIN = 12;
-const NORMAL_MAX = 18;
+for (let y = 1; y <= NUM_YEARS; y++)
+  for (const t of TERMS) QUARTERS.push({ idx: QUARTERS.length, term: t, year: y });
+const FULL_TIME_MIN = 12, NORMAL_MAX = 18;
 
-// ---- status helpers --------------------------------------------------------
-function statusOf(course, completedSet, courseIds) {
-  if (completedSet.has(course.id)) return "done";
-  const relevant = course.prereqs.filter((p) => courseIds.has(p));
-  const ready = relevant.every((p) => completedSet.has(p));
-  return ready ? "avail" : "locked";
+const CAT_VAR = {
+  intro: "var(--cat-intro)", math: "var(--cat-math)", core: "var(--cat-core)",
+  core400: "var(--cat-core400)", science: "var(--cat-science)",
+  arts: "var(--cat-arts)", social: "var(--cat-social)", english: "var(--cat-english)",
+};
+
+// ---- plan helpers ----------------------------------------------------------
+// The "active plan" = all required courses + electives/gen-eds the student chose
+// + any completed catalog course.
+function buildPlanIds(major, completedSet, chosenSet) {
+  const ids = new Set();
+  major.requirements.forEach((r) => {
+    if (r.kind === "all") r.courses.forEach((id) => ids.add(id));
+  });
+  chosenSet.forEach((id) => ids.add(id));
+  completedSet.forEach((id) => { if (COURSES[id]) ids.add(id); });
+  return ids;
+}
+function statusOf(id, completedSet, planIds) {
+  if (completedSet.has(id)) return "done";
+  const prereqs = (COURSES[id].prereqs || []).filter((p) => planIds.has(p));
+  return prereqs.every((p) => completedSet.has(p)) ? "avail" : "locked";
 }
 
-// ---- graph layout: assign each course a column by prereq depth -------------
-function layoutGraph(courses, courseIds) {
-  const byId = Object.fromEntries(courses.map((c) => [c.id, c]));
-  const depthCache = {};
+// ---- graph layout ----------------------------------------------------------
+function layoutGraph(ids) {
+  const cache = {};
   const depth = (id, seen = new Set()) => {
-    if (depthCache[id] != null) return depthCache[id];
+    if (cache[id] != null) return cache[id];
     if (seen.has(id)) return 0;
     seen.add(id);
-    const ps = byId[id].prereqs.filter((p) => courseIds.has(p));
+    const ps = (COURSES[id].prereqs || []).filter((p) => ids.has(p));
     const d = ps.length === 0 ? 0 : 1 + Math.max(...ps.map((p) => depth(p, seen)));
-    depthCache[id] = d;
-    return d;
+    cache[id] = d; return d;
   };
   const cols = {};
-  courses.forEach((c) => {
-    const d = depth(c.id);
-    (cols[d] = cols[d] || []).push(c);
-  });
-  const COL_W = 210, ROW_H = 96, NODE_W = 150, NODE_H = 74, PAD = 16;
-  const pos = {};
-  let maxRows = 0;
+  ids.forEach((id) => { const d = depth(id); (cols[d] = cols[d] || []).push(id); });
+  const COL_W = 200, ROW_H = 92, NODE_W = 146, NODE_H = 70, PAD = 14;
+  const pos = {}; let maxRows = 0;
   Object.keys(cols).forEach((d) => {
-    const list = cols[d].sort((a, b) => a.category.localeCompare(b.category));
+    const list = cols[d].sort((a, b) => COURSES[a].category.localeCompare(COURSES[b].category));
     maxRows = Math.max(maxRows, list.length);
-    list.forEach((c, row) => {
-      pos[c.id] = { x: PAD + d * COL_W, y: PAD + row * ROW_H };
-    });
+    list.forEach((id, row) => { pos[id] = { x: PAD + d * COL_W, y: PAD + row * ROW_H }; });
   });
   return { pos, width: PAD * 2 + Object.keys(cols).length * COL_W, height: PAD * 2 + maxRows * ROW_H, NODE_W, NODE_H, depth };
 }
 
-const CAT_VAR = {
-  intro: "var(--cat-intro)", math: "var(--cat-math)", core: "var(--cat-core)",
-  core400: "var(--cat-core400)", science: "var(--cat-science)", gened: "var(--cat-gened)",
-};
-
-// ---- pathway graph view ----------------------------------------------------
-function GraphView({ courses, completedSet, courseIds }) {
-  const { pos, width, height, NODE_W, NODE_H } = useMemo(
-    () => layoutGraph(courses, courseIds), [courses, courseIds]);
+function GraphView({ planIds, completedSet }) {
+  const ids = useMemo(() => [...planIds], [planIds]);
+  const { pos, width, height, NODE_W, NODE_H } = useMemo(() => layoutGraph(planIds), [planIds]);
   const edges = [];
-  courses.forEach((c) => {
-    c.prereqs.filter((p) => courseIds.has(p)).forEach((p) => {
-      const a = pos[p], b = pos[c.id];
-      if (a && b) edges.push({ key: `${p}-${c.id}`, x1: a.x + NODE_W, y1: a.y + NODE_H / 2, x2: b.x, y2: b.y + NODE_H / 2 });
-    });
-  });
+  ids.forEach((id) => (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => {
+    const a = pos[p], b = pos[id];
+    if (a && b) edges.push({ key: `${p}-${id}`, x1: a.x + NODE_W, y1: a.y + NODE_H / 2, x2: b.x, y2: b.y + NODE_H / 2 });
+  }));
   return (
     <div className="island graph-wrap">
       <div className="graph-inner" style={{ width, height }}>
         <svg width={width} height={height} style={{ position: "absolute", inset: 0, pointerEvents: "none" }}>
-          {edges.map((e) => {
-            const mx = (e.x1 + e.x2) / 2;
-            return <path key={e.key} d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`}
-              fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth="1.6" />;
-          })}
+          {edges.map((e) => { const mx = (e.x1 + e.x2) / 2;
+            return <path key={e.key} d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`} fill="none" stroke="var(--edge)" strokeWidth="1.5" />; })}
         </svg>
-        {courses.map((c) => {
-          const p = pos[c.id];
-          const st = statusOf(c, completedSet, courseIds);
+        {ids.map((id) => { const c = COURSES[id]; const st = statusOf(id, completedSet, planIds); const p = pos[id];
           return (
-            <div key={c.id} className={`node s-${st}`} style={{ left: p.x, top: p.y, width: NODE_W }}>
-              <div className="code"><span>{c.id}</span><span className="pill">{st === "done" ? "✓" : st === "avail" ? "•" : "🔒"}</span></div>
+            <div key={id} className={`node s-${st}`} style={{ left: p.x, top: p.y, width: NODE_W }}>
+              <div className="code"><span>{id}</span><span className="pill">{st === "done" ? "✓" : st === "avail" ? "•" : "🔒"}</span></div>
               <div className="cat-bar" style={{ background: CAT_VAR[c.category] }} />
               <div className="ttl">{c.title}</div>
             </div>
-          );
-        })}
+          ); })}
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Interactive quarter planner
-// ---------------------------------------------------------------------------
-function QuarterPlanner({ major, courses, completedSet, courseIds }) {
-  const byId = useMemo(() => Object.fromEntries(courses.map((c) => [c.id, c])), [courses]);
-  const completedCredits = useMemo(
-    () => courses.filter((c) => completedSet.has(c.id)).reduce((s, c) => s + c.credits, 0),
-    [courses, completedSet]
-  );
-  const requiredCredits = major.totalCredits;
+// ---- requirement buckets + course picker -----------------------------------
+function Requirements({ major, completedSet, chosenSet, toggleCompleted, addChosen, removeChosen }) {
+  const [open, setOpen] = useState({});
+  return (
+    <div className="reqs">
+      {major.requirements.map((r) => {
+        const all = r.kind === "all";
+        const fulfilling = all ? r.courses : r.courses.filter((id) => completedSet.has(id) || chosenSet.has(id));
+        const doneCr = fulfilling.filter((id) => completedSet.has(id)).reduce((s, id) => s + COURSES[id].credits, 0);
+        const planCr = fulfilling.filter((id) => chosenSet.has(id) && !completedSet.has(id)).reduce((s, id) => s + COURSES[id].credits, 0);
+        const doneCount = fulfilling.filter((id) => completedSet.has(id)).length;
+        const totalCr = r.courses.reduce((s, id) => s + COURSES[id].credits, 0);
 
-  // schedule: courseId -> quarter index. Unscheduled (remaining) courses live in the pool.
+        let need, have, unit;
+        if (r.kind === "credits") { need = r.needCredits; have = doneCr + planCr; unit = "cr"; }
+        else if (r.kind === "choose") { need = r.needCount; have = fulfilling.length; unit = "courses"; }
+        else { need = r.courses.length; have = doneCount; unit = "courses"; }
+        const pct = Math.min(100, Math.round((have / need) * 100));
+        const met = have >= need;
+
+        const candidates = r.courses.filter((id) => !completedSet.has(id) && !chosenSet.has(id));
+        const picker = r.kind !== "all";
+
+        return (
+          <div className="island req-bucket" key={r.id}>
+            <div className="rb-head">
+              <div>
+                <div className="rb-title">{r.label} {met && <span className="met">✓ met</span>}</div>
+                <div className="rb-sub">{r.kind === "credits" ? `${doneCr} done + ${planCr} planned` : `${doneCount} done`} · need {need} {unit}</div>
+              </div>
+              <div className="rb-count">{have}/{need} {unit === "cr" ? "cr" : ""}</div>
+            </div>
+            <div className="rb-bar"><div className="rb-fill" style={{ width: `${pct}%`, background: met ? "var(--done)" : "var(--avail)" }} /></div>
+
+            {/* selected / required courses */}
+            <div className="rb-chips">
+              {fulfilling.map((id) => {
+                const c = COURSES[id]; const done = completedSet.has(id);
+                return (
+                  <span key={id} className={`chip ${done ? "done" : "planned"}`}>
+                    <i className="d" style={{ background: CAT_VAR[c.category] }} />
+                    <b onClick={() => toggleCompleted(id)} title="Toggle completed">{id}</b>
+                    <span className="cr">{c.credits}</span>
+                    {!all && !done && <button className="x" onClick={() => removeChosen(id)} title="Remove">×</button>}
+                  </span>
+                );
+              })}
+              {fulfilling.length === 0 && <span className="rb-empty">Nothing selected yet.</span>}
+            </div>
+
+            {/* picker: qualifying courses to choose from */}
+            {picker && (
+              <>
+                <button className="rb-browse" onClick={() => setOpen((o) => ({ ...o, [r.id]: !o[r.id] }))}>
+                  {open[r.id] ? "▾ Hide" : "▸ Browse"} qualifying courses ({candidates.length})
+                </button>
+                {open[r.id] && (
+                  <div className="rb-options">
+                    {candidates.map((id) => {
+                      const c = COURSES[id];
+                      return (
+                        <div className="opt" key={id}>
+                          <i className="d" style={{ background: CAT_VAR[c.category] }} />
+                          <div className="opt-name"><b>{id}</b><span>{c.title}</span></div>
+                          <span className="cr">{c.credits} cr</span>
+                          <button className="add" onClick={() => addChosen(id)}>＋ Add</button>
+                        </div>
+                      );
+                    })}
+                    {candidates.length === 0 && <div className="rb-empty">No more qualifying courses listed.</div>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- quarter planner -------------------------------------------------------
+function QuarterPlanner({ planIds, completedSet }) {
+  const planArr = useMemo(() => [...planIds], [planIds]);
+  const completedCredits = planArr.filter((id) => completedSet.has(id)).reduce((s, id) => s + COURSES[id].credits, 0);
+  const remaining = planArr.filter((id) => !completedSet.has(id));
+
   const [schedule, setSchedule] = useState({});
   const [dragId, setDragId] = useState(null);
+  // drop any scheduled course that's no longer in the plan or now completed
+  useEffect(() => {
+    setSchedule((s) => { const n = {}; for (const k in s) if (remaining.includes(k)) n[k] = s[k]; return n; });
+  }, [planArr.join(","), completedCredits]); // eslint-disable-line
 
-  // Reset schedule whenever the transcript changes.
-  useEffect(() => { setSchedule({}); }, [major.id, completedCredits]);
+  const pool = remaining.filter((id) => schedule[id] == null);
+  const place = (id, q) => setSchedule((s) => ({ ...s, [id]: q }));
+  const unplace = (id) => setSchedule((s) => { const n = { ...s }; delete n[id]; return n; });
 
-  const remaining = useMemo(() => courses.filter((c) => !completedSet.has(c.id)), [courses, completedSet]);
-  const poolCourses = remaining.filter((c) => schedule[c.id] == null);
-
-  function place(courseId, qIdx) {
-    setSchedule((s) => ({ ...s, [courseId]: qIdx }));
-  }
-  function unplace(courseId) {
-    setSchedule((s) => { const n = { ...s }; delete n[courseId]; return n; });
-  }
-
-  // ---- prereq validation across the timeline ----
-  function violationFor(c) {
-    const q = schedule[c.id];
-    if (q == null) return null;
-    const missing = [];
-    c.prereqs.filter((p) => courseIds.has(p)).forEach((p) => {
-      if (completedSet.has(p)) return;                 // already done
+  function violationFor(id) {
+    const q = schedule[id]; if (q == null) return null; const miss = [];
+    (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => {
+      if (completedSet.has(p)) return;
       const pq = schedule[p];
-      if (pq == null) missing.push(`${p} not planned`);
-      else if (pq >= q) missing.push(`${p} must come earlier`);
+      if (pq == null) miss.push(`${p} not planned`); else if (pq >= q) miss.push(`${p} must be earlier`);
     });
-    return missing.length ? missing : null;
+    return miss.length ? miss : null;
   }
 
-  // ---- per-quarter + cumulative credit totals ----
-  const quarterData = QUARTERS.map((qd) => {
-    const list = remaining.filter((c) => schedule[c.id] === qd.idx);
-    const credits = list.reduce((s, c) => s + c.credits, 0);
-    return { ...qd, list, credits };
+  const qData = QUARTERS.map((qd) => {
+    const list = remaining.filter((id) => schedule[id] === qd.idx);
+    return { ...qd, list, credits: list.reduce((s, id) => s + COURSES[id].credits, 0) };
   });
-  let running = completedCredits;
-  const cumulative = quarterData.map((q) => (running += q.credits));
+  let run = completedCredits;
+  const cum = qData.map((q) => (run += q.credits));
+  const planned = qData.reduce((s, q) => s + q.credits, 0);
+  const lastUsed = qData.reduce((m, q, i) => (q.list.length ? i : m), -1);
+  const grad = lastUsed >= 0 ? QUARTERS[lastUsed] : null;
 
-  const plannedCredits = quarterData.reduce((s, q) => s + q.credits, 0);
-  const lastUsed = quarterData.reduce((m, q, i) => (q.list.length ? i : m), -1);
-  const gradQuarter = lastUsed >= 0 ? QUARTERS[lastUsed] : null;
-  const totalProjected = completedCredits + plannedCredits;
-
-  // ---- auto-plan: greedily place remaining courses respecting prereqs ----
   function autoPlan() {
-    const { depth } = layoutGraph(courses, courseIds);
-    const order = [...remaining].sort((a, b) => depth(a.id) - depth(b.id) || b.credits - a.credits);
-    const placed = {};            // courseId -> qIdx
-    const load = QUARTERS.map(() => 0);
-    const target = 15;
-    order.forEach((c) => {
-      // earliest quarter after all prereqs are satisfied
+    const { depth } = layoutGraph(planIds);
+    const order = [...remaining].sort((a, b) => depth(a) - depth(b) || COURSES[b].credits - COURSES[a].credits);
+    const placed = {}, load = QUARTERS.map(() => 0), target = 15;
+    order.forEach((id) => {
       let earliest = 0;
-      c.prereqs.filter((p) => courseIds.has(p)).forEach((p) => {
-        if (completedSet.has(p)) return;
-        if (placed[p] != null) earliest = Math.max(earliest, placed[p] + 1);
+      (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => {
+        if (completedSet.has(p)) return; if (placed[p] != null) earliest = Math.max(earliest, placed[p] + 1);
       });
       let q = earliest;
-      while (q < QUARTERS.length && load[q] + c.credits > target && load[q] >= target - 3) q++;
+      while (q < QUARTERS.length && load[q] + COURSES[id].credits > target && load[q] >= target - 3) q++;
       if (q >= QUARTERS.length) q = QUARTERS.length - 1;
-      placed[c.id] = q;
-      load[q] += c.credits;
+      placed[id] = q; load[q] += COURSES[id].credits;
     });
     setSchedule(placed);
   }
 
-  const dragProps = (courseId) => ({
-    draggable: true,
-    onDragStart: () => setDragId(courseId),
-    onDragEnd: () => setDragId(null),
-  });
-  const dropProps = (handler) => ({
-    onDragOver: (e) => e.preventDefault(),
-    onDrop: (e) => { e.preventDefault(); if (dragId) handler(dragId); setDragId(null); },
-  });
+  const drag = (id) => ({ draggable: true, onDragStart: () => setDragId(id), onDragEnd: () => setDragId(null) });
+  const drop = (h) => ({ onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); if (dragId) h(dragId); setDragId(null); } });
 
   return (
     <div className="planner">
-      {/* summary */}
       <div className="island planner-summary">
-        <div className="ps-item"><div className="num">{completedCredits}</div><div className="lbl">Credits completed</div></div>
-        <div className="ps-item"><div className="num">{plannedCredits}</div><div className="lbl">Credits planned</div></div>
-        <div className="ps-item"><div className="num" style={{ color: totalProjected >= requiredCredits ? "var(--done)" : "var(--text)" }}>
-          {totalProjected}/{requiredCredits}</div><div className="lbl">Projected total</div></div>
-        <div className="ps-item"><div className="num">{gradQuarter ? `${gradQuarter.term} Y${gradQuarter.year}` : "—"}</div><div className="lbl">Projected finish</div></div>
+        <div className="ps-item"><div className="num">{completedCredits}</div><div className="lbl">Credits done</div></div>
+        <div className="ps-item"><div className="num">{planned}</div><div className="lbl">Credits planned</div></div>
+        <div className="ps-item"><div className="num">{completedCredits + planned}</div><div className="lbl">Projected total</div></div>
+        <div className="ps-item"><div className="num">{grad ? `${grad.term} Y${grad.year}` : "—"}</div><div className="lbl">Projected finish</div></div>
         <div className="ps-actions">
           <button className="btn" onClick={autoPlan}>Auto-plan path</button>
           <button className="btn ghost" onClick={() => setSchedule({})}>Clear</button>
@@ -206,76 +239,45 @@ function QuarterPlanner({ major, courses, completedSet, courseIds }) {
       </div>
 
       <div className="planner-cols">
-        {/* unscheduled pool */}
-        <div className="island pool" {...dropProps(unplace)}>
-          <h4>To place <small>{poolCourses.length}</small></h4>
+        <div className="island pool" {...drop(unplace)}>
+          <h4>To place <small>{pool.length}</small></h4>
           <p className="hint">Drag a course into a quarter →</p>
-          {poolCourses.map((c) => (
-            <div key={c.id} className={`course-chip s-${statusOf(c, completedSet, courseIds)}`} {...dragProps(c.id)}>
-              <div className="code"><span>{c.id}</span><span className="tag">{c.credits} cr</span></div>
-              <div className="ttl">{c.title}</div>
-            </div>
-          ))}
-          {poolCourses.length === 0 && <div className="hint">All remaining courses placed ✓</div>}
+          {pool.map((id) => { const c = COURSES[id];
+            return (
+              <div key={id} className={`course-chip s-${statusOf(id, completedSet, planIds)}`} {...drag(id)}>
+                <div className="code"><span>{id}</span><span className="tag">{c.credits} cr</span></div>
+                <div className="ttl">{c.title}</div>
+              </div>
+            ); })}
+          {pool.length === 0 && <div className="hint">All planned courses placed ✓</div>}
         </div>
 
-        {/* quarter columns */}
         <div className="quarters-scroll">
-          {quarterData.map((q, i) => {
-            const over = q.credits > NORMAL_MAX;
-            const under = q.credits > 0 && q.credits < FULL_TIME_MIN;
+          {qData.map((q, i) => { const over = q.credits > NORMAL_MAX, under = q.credits > 0 && q.credits < FULL_TIME_MIN;
             return (
-              <div key={q.idx} className="island q-col" {...dropProps((id) => place(id, q.idx))}>
+              <div key={q.idx} className="island q-col" {...drop((id) => place(id, q.idx))}>
                 <div className="q-head">
                   <div className="q-title">{q.term} <small>Yr {q.year}</small></div>
                   <div className={`q-credits ${over ? "over" : under ? "under" : ""}`}>{q.credits} cr</div>
                 </div>
                 <div className="q-bar"><div className="q-bar-fill" style={{ width: `${Math.min(100, (q.credits / NORMAL_MAX) * 100)}%` }} /></div>
-                <div className="q-cum">Σ {cumulative[i]} cr</div>
-                {q.list.map((c) => {
-                  const viol = violationFor(c);
+                <div className="q-cum">Σ {cum[i]} cr</div>
+                {q.list.map((id) => { const c = COURSES[id]; const viol = violationFor(id);
                   return (
-                    <div key={c.id} className={`course-chip s-${statusOf(c, completedSet, courseIds)} ${viol ? "violation" : ""}`}
-                      title={viol ? viol.join(" · ") : ""} {...dragProps(c.id)} onClick={() => unplace(c.id)}>
-                      <div className="code"><span>{c.id}</span><span className="tag">{c.credits} cr</span></div>
+                    <div key={id} className={`course-chip s-${statusOf(id, completedSet, planIds)} ${viol ? "violation" : ""}`}
+                      title={viol ? viol.join(" · ") : ""} {...drag(id)} onClick={() => unplace(id)}>
+                      <div className="code"><span>{id}</span><span className="tag">{c.credits} cr</span></div>
                       <div className="ttl">{c.title}</div>
                       {viol && <div className="viol-note">⚠ {viol[0]}</div>}
                     </div>
-                  );
-                })}
+                  ); })}
                 {q.list.length === 0 && <div className="hint drop">drop here</div>}
               </div>
-            );
-          })}
+            ); })}
         </div>
       </div>
-      <p className="hint center">Tip: drag chips between quarters, or click a placed course to send it back. Auto-plan builds a prereq-valid path at ~15 cr/quarter.</p>
+      <p className="hint center">Drag chips between quarters, or click a placed course to send it back. Auto-plan builds a prereq-valid path at ~15 cr/quarter.</p>
     </div>
-  );
-}
-
-// ---- remaining-courses list ------------------------------------------------
-function RemainingList({ courses, completedSet, courseIds }) {
-  const remaining = courses.filter((c) => !completedSet.has(c.id));
-  if (remaining.length === 0) return null;
-  return (
-    <>
-      <div className="section-title">Still needed for this major ({remaining.length})</div>
-      <div className="req-grid">
-        {remaining.map((c) => {
-          const st = statusOf(c, completedSet, courseIds);
-          const need = c.prereqs.filter((p) => courseIds.has(p) && !completedSet.has(p));
-          return (
-            <div key={c.id} className="island req-card">
-              <div className="code">{c.id}</div>
-              <div className="ttl">{c.title}</div>
-              <div className="meta">{CATEGORY_LABELS[c.category]} · {c.credits} cr</div>
-              <div className={`status ${st}`}>{st === "avail" ? "Ready to take now" : `Needs: ${need.join(", ")}`}</div>
-            </div>
-          );
-        })}
-      </div>
-    </>
   );
 }
 
@@ -284,35 +286,48 @@ export default function App() {
   const [majorId, setMajorId] = useState(null);
   const [studentId, setStudentId] = useState("");
   const [completed, setCompleted] = useState([]);
+  const [chosen, setChosen] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [syncedAt, setSyncedAt] = useState(null);
-  const [view, setView] = useState("planner");
+  const [pasteText, setPasteText] = useState("");
+  const [showPaste, setShowPaste] = useState(false);
+  const [view, setView] = useState("requirements");
 
   const major = majorId ? MAJORS[majorId] : null;
-  const courseIds = useMemo(() => new Set(major ? major.courses.map((c) => c.id) : []), [major]);
   const completedSet = useMemo(() => new Set(completed), [completed]);
+  const chosenSet = useMemo(() => new Set(chosen), [chosen]);
+  const planIds = useMemo(() => (major ? buildPlanIds(major, completedSet, chosenSet) : new Set()), [major, completedSet, chosenSet]);
 
   const stats = useMemo(() => {
     if (!major) return null;
-    const total = major.courses.length;
-    const done = major.courses.filter((c) => completedSet.has(c.id)).length;
-    const avail = major.courses.filter((c) => !completedSet.has(c.id) && statusOf(c, completedSet, courseIds) === "avail").length;
-    return { total, done, avail, locked: total - done - avail, pct: Math.round((done / total) * 100) };
-  }, [major, completedSet, courseIds]);
+    const ids = [...planIds];
+    const done = ids.filter((id) => completedSet.has(id)).length;
+    const avail = ids.filter((id) => !completedSet.has(id) && statusOf(id, completedSet, planIds) === "avail").length;
+    const creditsDone = ids.filter((id) => completedSet.has(id)).reduce((s, id) => s + COURSES[id].credits, 0);
+    return { total: ids.length, done, avail, locked: ids.length - done - avail, creditsDone, pct: Math.round((creditsDone / major.totalCredits) * 100) };
+  }, [major, planIds, completedSet]);
 
   async function handleSync() {
     if (!majorId) return;
     setSyncing(true);
     const res = await fetchCompletedCourses({ studentId: studentId || "demo-student", majorId });
-    setCompleted(res.completed);
-    setSyncedAt(new Date());
-    setSyncing(false);
+    setCompleted((prev) => [...new Set([...prev, ...res.completed])]);
+    setSyncedAt(new Date()); setSyncing(false);
   }
-  function pickMajor(id) { setMajorId(id); setCompleted([]); setSyncedAt(null); }
+  function applyPaste() {
+    const ids = parseTranscript(pasteText);
+    setCompleted((prev) => [...new Set([...prev, ...ids])]);
+    setSyncedAt(new Date()); setShowPaste(false); setPasteText("");
+  }
+  function toggleCompleted(id) {
+    setCompleted((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }
+  const addChosen = (id) => setChosen((p) => p.includes(id) ? p : [...p, id]);
+  const removeChosen = (id) => setChosen((p) => p.filter((x) => x !== id));
+  function pickMajor(id) { setMajorId(id); setCompleted([]); setChosen([]); setSyncedAt(null); }
 
   return (
     <>
-      <div className="bg-blob b1" /><div className="bg-blob b2" /><div className="bg-blob b3" />
       <div className="app">
         <header className="island topbar">
           <div className="brand">
@@ -324,7 +339,7 @@ export default function App() {
 
         <section className="island picker">
           <h2>Choose your major</h2>
-          <p className="sub">Pick a degree to load its minimum required courses, prerequisites, and pathways.</p>
+          <p className="sub">Pick a degree to load its required courses, prerequisites, and general-education requirements.</p>
           <div className="major-grid">
             {Object.values(MAJORS).map((m) => (
               <button key={m.id} className={`major-card ${majorId === m.id ? "active" : ""}`} onClick={() => pickMajor(m.id)}>
@@ -337,16 +352,24 @@ export default function App() {
         {major && (
           <>
             <section className="island signin">
-              <input placeholder="School ID (e.g. UW NetID) — demo, no real auth" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
+              <input placeholder="School ID (e.g. UW NetID)" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
               <button className="btn" onClick={handleSync} disabled={syncing}>{syncing ? "Connecting…" : "Connect & pull transcript"}</button>
-              {syncedAt && !syncing && <span className="synced">● Transcript synced — {completed.length} courses imported</span>}
+              <button className="btn ghost" onClick={() => setShowPaste((v) => !v)}>Paste transcript</button>
+              {syncedAt && !syncing && <span className="synced">● {completed.length} completed courses loaded</span>}
             </section>
+            {showPaste && (
+              <section className="island paste">
+                <p className="hint">Paste your unofficial transcript text — we'll detect course codes like “CSE 121”, “MATH 126”.</p>
+                <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="e.g.  CSE 121  4.0  A&#10;MATH 126  5.0  3.8 ..." />
+                <button className="btn" onClick={applyPaste}>Import detected courses</button>
+              </section>
+            )}
 
             {stats && (
               <section className="stats">
-                <div className="island stat"><div className="num">{stats.pct}%</div><div className="lbl">Toward {major.name}</div>
-                  <div className="progress-track"><div className="progress-fill" style={{ width: `${stats.pct}%` }} /></div></div>
-                <div className="island stat"><div className="num">{stats.done}</div><div className="lbl">Completed</div></div>
+                <div className="island stat"><div className="num">{stats.pct}%</div><div className="lbl">Credits toward {major.totalCredits}</div>
+                  <div className="progress-track"><div className="progress-fill" style={{ width: `${Math.min(100, stats.pct)}%` }} /></div></div>
+                <div className="island stat"><div className="num">{stats.creditsDone}</div><div className="lbl">Credits completed</div></div>
                 <div className="island stat"><div className="num">{stats.avail}</div><div className="lbl">Available now</div></div>
                 <div className="island stat"><div className="num">{stats.locked}</div><div className="lbl">Prereqs pending</div></div>
               </section>
@@ -354,26 +377,25 @@ export default function App() {
 
             <div className="toolbar">
               <div className="island segmented">
+                <button className={view === "requirements" ? "active" : ""} onClick={() => setView("requirements")}>Requirements</button>
                 <button className={view === "planner" ? "active" : ""} onClick={() => setView("planner")}>Quarter planner</button>
                 <button className={view === "graph" ? "active" : ""} onClick={() => setView("graph")}>Pathway graph</button>
               </div>
               <div className="legend">
-                <span><i className="dot done" /> Completed</span>
-                <span><i className="dot avail" /> Available now</span>
-                <span><i className="dot locked" /> Prereqs pending</span>
+                <span><i className="dot done" /> Completed</span><span><i className="dot avail" /> Available</span><span><i className="dot locked" /> Locked</span>
               </div>
             </div>
 
-            {view === "planner"
-              ? <QuarterPlanner major={major} courses={major.courses} completedSet={completedSet} courseIds={courseIds} />
-              : <GraphView courses={major.courses} completedSet={completedSet} courseIds={courseIds} />}
-
-            <RemainingList courses={major.courses} completedSet={completedSet} courseIds={courseIds} />
+            {view === "requirements" && (
+              <Requirements major={major} completedSet={completedSet} chosenSet={chosenSet}
+                toggleCompleted={toggleCompleted} addChosen={addChosen} removeChosen={removeChosen} />
+            )}
+            {view === "planner" && <QuarterPlanner planIds={planIds} completedSet={completedSet} />}
+            {view === "graph" && <GraphView planIds={planIds} completedSet={completedSet} />}
 
             <p className="footnote">
-              Prototype overview · UW quarter system · Required courses & prerequisites are sample UW CS data.<br />
-              Transcript sync, minors, double majors, and live catalog scraping arrive in later versions.<br />
-              Designed to sync in real time with the companion SwiftUI iOS app.
+              Click a course code to toggle it completed. Add gen-ed / elective courses from each requirement's “Browse” list.<br />
+              Sample UW CS data · qualifying-course lists stand in for a live registrar feed · designed to sync with the SwiftUI iOS app.
             </p>
           </>
         )}
