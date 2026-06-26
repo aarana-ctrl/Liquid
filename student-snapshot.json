@@ -1,0 +1,45 @@
+{
+  "source": "UW MyPlan · DARS audit",
+  "preparedFor": "aarana",
+  "program": "Bachelor of Science (Computer Science)",
+  "catalogYear": "AU 25",
+  "datePrepared": "05/17/26 - 11:39 PM",
+  "gpa": 3.18,
+  "audit": { "totalRequired": 180, "earned": 76, "inProgress": 13, "needs": 91 },
+  "residency45": { "earned": 28, "inProgress": 13, "needs": 4 },
+  "completed": [
+    {"qtr": "AU25", "code": "ENGL 111", "title": "Composition: Literature", "credits": 5, "grade": "4.0"},
+    {"qtr": "SP25", "code": "CSE 121", "title": "Computer Programming I", "credits": 4, "grade": "AP"},
+    {"qtr": "SU24", "code": "CSE 122", "title": "Computer Programming II", "credits": 4, "grade": "4.0"},
+    {"qtr": "AU25", "code": "CSE 123", "title": "Computer Programming III", "credits": 4, "grade": "3.2"},
+    {"qtr": "SP25", "code": "MATH 124", "title": "Calculus I", "credits": 5, "grade": "AP"},
+    {"qtr": "AU25", "code": "MATH 125", "title": "Calculus II", "credits": 5, "grade": "2.6"},
+    {"qtr": "WI26", "code": "MATH 126", "title": "Calculus III", "credits": 5, "grade": "2.9"},
+    {"qtr": "SP25", "code": "CHEM 142", "title": "General Chemistry", "credits": 5, "grade": "AP"},
+    {"qtr": "SP25", "code": "CHEM 152", "title": "General Chemistry", "credits": 5, "grade": "AP"},
+    {"qtr": "SP25", "code": "PHYS 121", "title": "Mechanics", "credits": 5, "grade": "AP"},
+    {"qtr": "SP25", "code": "STAT 290", "title": "AP Statistics", "credits": 5, "grade": "AP"},
+    {"qtr": "SP25", "code": "ECON 200", "title": "Intro Microeconomics", "credits": 5, "grade": "AP"},
+    {"qtr": "SP25", "code": "HSTAA 101", "title": "Survey History of US", "credits": 5, "grade": "AP"},
+    {"qtr": "SP25", "code": "POL S 202", "title": "Intro American Politics", "credits": 5, "grade": "AP"},
+    {"qtr": "WI26", "code": "CSE 331", "title": "SW Design & Implementation", "credits": 4, "grade": "3.2"},
+    {"qtr": "WI26", "code": "CSE 351", "title": "HW/SW Interface", "credits": 4, "grade": "2.4"},
+    {"qtr": "WI26", "code": "CSE 391", "title": "System & Software Tools", "credits": 1, "grade": "CR"}
+  ],
+  "inProgress": [
+    {"qtr": "SP26", "code": "CSE 311", "title": "Foundations of Computing I", "credits": 4},
+    {"qtr": "SP26", "code": "MATH 208", "title": "Matrix Algebra", "credits": 4},
+    {"qtr": "SP26", "code": "ESS 101", "title": "Geology & Society (W)", "credits": 5}
+  ],
+  "requirementsRemaining": {
+    "ArtsAndHumanities": "20 cr (none yet)",
+    "SocialSciences": "5 cr (15 of 20 done)",
+    "NaturalSciences": "met (36 cr)",
+    "Writing_W": "5 cr (ESS 101 in progress)",
+    "Diversity": "5 cr",
+    "Mathematics": "MATH 208 in progress",
+    "CSE_Fundamentals": "need CSE 312 and CSE 332",
+    "CSE_CoreAndElectives": "33 cr — 4x 400-level core, 2 core, 1 core/capstone, electives",
+    "OutsideMajor90": "need 35 cr"
+  }
+}
