@@ -120,8 +120,12 @@ export const MAJORS = {
 //   inProgress = currently registered (IP in DARS)
 //   audit      = headline numbers straight from the audit
 // ---------------------------------------------------------------------------
+// Embedded fallback (used when the page is opened directly from disk, where
+// fetch() of a local file is blocked). On a real host, fetchMyPlanSnapshot
+// pulls public/student-snapshot.json fresh on every call.
 export const STUDENT_SNAPSHOT = {
   source: "UW MyPlan · DARS audit",
+  fetchedAt: "2026-06-26T08:31:59Z",
   preparedFor: "aarana",
   program: "Bachelor of Science (Computer Science)",
   catalogYear: "AU 25",
@@ -133,9 +137,18 @@ export const STUDENT_SNAPSHOT = {
   inProgress: ["CSE311", "MATH208", "ESS101"],
 };
 
-// Returns the live snapshot (kept as a Promise to mirror an async import).
-export function fetchMyPlanSnapshot() {
-  return new Promise((resolve) => setTimeout(() => resolve(STUDENT_SNAPSHOT), 500));
+// Pulls the latest snapshot fresh every call (cache-busted). The snapshot file
+// is refreshed by a connect-and-read run through the browser session/agent, so
+// each Connect reflects the most recent live read. Falls back to the embedded
+// copy when fetch isn't available (e.g. opened via file://).
+export async function fetchMyPlanSnapshot() {
+  try {
+    const res = await fetch(`./student-snapshot.json?t=${Date.now()}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    return { ...STUDENT_SNAPSHOT, fetchedAt: STUDENT_SNAPSHOT.fetchedAt, _fallback: true };
+  }
 }
 
 // Parse pasted unofficial-transcript / DARS text into known course ids.
