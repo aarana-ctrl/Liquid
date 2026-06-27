@@ -4,15 +4,23 @@
 
 export const API_BASE = import.meta.env?.VITE_API_URL || "http://localhost:8787";
 
-let _online = null;
+let _online = null, _oidc = {};
 export function isOnline() { return _online; }
+export function isOidc(name) { return !!_oidc[name]; }
+export const oidcStartUrl = (name) => `${API_BASE}/api/auth/oidc/${name}/start`;
 
 export async function apiHealth() {
   try {
     const r = await fetch(`${API_BASE}/health`, { cache: "no-store" });
-    _online = r.ok;
-  } catch { _online = false; }
-  return _online;
+    const j = await r.json();
+    _online = !!j.ok; _oidc = j.oidc || {};
+    return j;
+  } catch { _online = false; return null; }
+}
+
+export async function me(token) {
+  const r = await fetch(`${API_BASE}/api/me`, { headers: authHeaders(token) });
+  return r.ok ? r.json() : null;
 }
 
 const authHeaders = (token) => ({ "Content-Type": "application/json", Authorization: `Bearer ${token}` });
@@ -49,5 +57,15 @@ export async function getSnapshot(token) {
 }
 export async function postSnapshot(token, snapshot) {
   const r = await fetch(`${API_BASE}/api/snapshot`, { method: "POST", headers: authHeaders(token), body: JSON.stringify({ snapshot }) });
+  return r.ok ? r.json() : null;
+}
+
+// ---- MyPlan handoff (bookmarklet import) ----
+export async function startImport(token) {
+  const r = await fetch(`${API_BASE}/api/import/start`, { method: "POST", headers: authHeaders(token) });
+  return r.ok ? r.json() : null; // { code, expiresInSec }
+}
+export async function importDars(code, darsText) {
+  const r = await fetch(`${API_BASE}/api/import/${code}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ darsText }) });
   return r.ok ? r.json() : null;
 }

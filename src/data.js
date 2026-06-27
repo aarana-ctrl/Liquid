@@ -52,10 +52,13 @@ export const COURSES = {
   CHEM152: { id: "CHEM152", title: "General Chemistry", credits: 5, category: "science", prereqs: ["CHEM142"] },
   PHYS121: { id: "PHYS121", title: "Mechanics", credits: 5, category: "science", prereqs: [] },
   STAT290: { id: "STAT290", title: "AP Statistics", credits: 5, category: "science", prereqs: [] },
+  // Triple-overlay course: Natural Science credits + Diversity + Writing at once.
+  ENVIR239:{ id: "ENVIR239", title: "Sustainability: Personal Choices, Broad Impacts", credits: 5, category: "science", prereqs: [], gened: ["science", "diversity", "writing"], csRelevant: false },
+  BIOL106: { id: "BIOL106", title: "Plants & Society", credits: 5, category: "science", prereqs: [], gened: ["science", "diversity"] },
 
   // English / Writing
   ENGL111: { id: "ENGL111", title: "Composition: Literature", credits: 5, category: "english", prereqs: [] },
-  ESS101:  { id: "ESS101",  title: "Geology & Society (W)", credits: 5, category: "science", prereqs: [] },
+  ESS101:  { id: "ESS101",  title: "Geology & Society", credits: 5, category: "science", prereqs: [], gened: ["science", "writing"] },
   CSE391:  { id: "CSE391",  title: "System & Software Tools", credits: 1, category: "core400", prereqs: [] },
 
   // Social Sciences (gened: which areas a course can satisfy; csRelevant: degree fit)
