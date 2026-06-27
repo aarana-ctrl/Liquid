@@ -1,0 +1,37 @@
+# Render blueprint for the Liquid Planner backend.
+# In Render: New → Blueprint → connect this repo. Render reads this file,
+# creates the service, and prompts you for the secret values (sync:false).
+services:
+  - type: web
+    name: liquid-planner-api
+    runtime: node
+    rootDir: server
+    plan: free                # bump to "starter" for always-on (no cold starts)
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_JWT_SECRET
+        generateValue: true   # Render generates a strong secret for you
+      - key: DB
+        value: firestore
+      - key: FIRESTORE_PROJECT_ID
+        value: liquid-2e4d2
+      - key: GOOGLE_HD
+        value: uw.edu
+      # --- secrets: you paste these in the Render dashboard ---
+      - key: FIREBASE_SERVICE_ACCOUNT   # paste the entire service-account JSON
+        sync: false
+      - key: GOOGLE_OIDC_CLIENT_ID
+        sync: false
+      - key: GOOGLE_OIDC_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OIDC_REDIRECT_URI   # https://<this-service>.onrender.com/api/auth/oidc/google/callback
+        sync: false
+      - key: WEB_ORIGIN                 # your deployed frontend URL
+        sync: false
+      - key: CORS_ORIGINS               # same as WEB_ORIGIN
+        sync: false
