@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "re
 import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript } from "./data.js";
 import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot } from "./api.js";
+import { recommend, poolForArea } from "./recommend.js";
 
 // ---- quarter calendar ------------------------------------------------------
 const TERMS = ["Autumn", "Winter", "Spring"];
@@ -282,8 +283,7 @@ function ThisQuarter({ ipSet }) {
 }
 
 // ---- requirements / catalog ------------------------------------------------
-function Requirements({ major, completedSet, ipSet, chosenSet, toggleCompleted, addChosen, removeChosen }) {
-  const [open, setOpen] = useState({});
+function Requirements({ major, completedSet, ipSet, chosenSet, toggleCompleted, removeChosen, onOpen }) {
   return (
     <>
       <div className="section-h">Degree Requirements · Catalog</div>
@@ -315,17 +315,86 @@ function Requirements({ major, completedSet, ipSet, chosenSet, toggleCompleted, 
                   return <span key={id} className={`chip ${done ? "done" : ip ? "ip" : "planned"}`}><i className="d" style={{ background: CAT_VAR[c.category] }} /><b onClick={() => toggleCompleted(id)}>{id}</b><span className="cr">{c.credits}</span>{!all && !done && !ip && <button className="x" onClick={() => removeChosen(id)}>×</button>}</span>; })}
                 {fulfilling.length === 0 && <span className="rb-empty">Nothing selected yet.</span>}
               </div>
-              {r.kind !== "all" && (<>
-                <button className="rb-browse" onClick={() => setOpen((o) => ({ ...o, [r.id]: !o[r.id] }))}>{open[r.id] ? "▾ Hide" : "▸ Browse"} qualifying courses ({candidates.length})</button>
-                {open[r.id] && <div className="rb-options">{candidates.map((id) => { const c = COURSES[id];
-                  return <div className="opt" key={id}><i className="d" style={{ background: CAT_VAR[c.category] }} /><div className="opt-name"><b>{id}</b><span>{c.title}</span></div><span className="cr">{c.credits} cr</span><button className="add" onClick={() => addChosen(id)}>＋ Add</button></div>; })}
-                  {candidates.length === 0 && <div className="rb-empty">No more listed.</div>}</div>}
-              </>)}
+              {r.kind !== "all" && (
+                <button className="rb-browse" onClick={() => onOpen(r)}>★ Recommended &amp; all courses →</button>
+              )}
             </div>
           );
         })}
       </div>
     </>
+  );
+}
+
+// ---- category detail: Recommended + All available -------------------------
+const SHORT_AREA = { arts: "A&H", social: "SSc", science: "NSc", diversity: "DIV", writing: "W", core400: "CSE" };
+
+function CourseRow({ id, reasons, chosen, onAdd, onRemove }) {
+  const c = COURSES[id];
+  return (
+    <div className="cd-course">
+      <div className="cd-c-main">
+        <div className="cd-c-head">
+          <b>{id.replace(/(\d)/, " $1")}</b><span className="cd-cr">{c.credits} cr</span>
+          {(c.gened || [c.category]).map((g) => <span key={g} className="gbadge" style={{ borderColor: CAT_VAR[g] || "var(--glass-brd)" }}>{SHORT_AREA[g] || g}</span>)}
+        </div>
+        <div className="cd-c-ttl">{c.title}</div>
+        {reasons && reasons.length > 0 && <div className="cd-reasons">{reasons.slice(0, 3).map((r, i) => <span key={i} className="rchip">{r}</span>)}</div>}
+      </div>
+      {chosen
+        ? <button className="cd-add added" onClick={onRemove}>✓ Added</button>
+        : <button className="cd-add" onClick={onAdd}>＋ Add</button>}
+    </div>
+  );
+}
+
+function CategoryDetail({ req, completedSet, ipSet, chosenSet, addChosen, removeChosen, onClose }) {
+  const [tab, setTab] = useState("rec");
+  const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
+  const pool = useMemo(() => poolForArea(req.area), [req.area]);
+
+  const isCredits = req.kind === "credits";
+  const doneCr = pool.filter((c) => completedSet.has(c.id)).reduce((s, c) => s + c.credits, 0);
+  const ipCr = pool.filter((c) => ipSet.has(c.id)).reduce((s, c) => s + c.credits, 0);
+  const planCr = pool.filter((c) => chosenSet.has(c.id) && !taken.has(c.id)).reduce((s, c) => s + c.credits, 0);
+  const need = isCredits ? req.needCredits : req.needCount;
+  const remainingCredits = isCredits ? Math.max(0, need - (doneCr + ipCr + planCr)) : 0;
+  const haveLabel = isCredits ? `${doneCr + ipCr} done · ${planCr} planned` : `${pool.filter((c) => taken.has(c.id) || chosenSet.has(c.id)).length} selected`;
+
+  const recs = useMemo(() => recommend({ area: req.area, remainingCredits, taken, planned: chosenSet, satisfied: taken }), [req.area, remainingCredits, taken, chosenSet]);
+  const top = recs.slice(0, 6);
+  const all = pool.filter((c) => !taken.has(c.id)).sort((a, b) => a.id.localeCompare(b.id));
+
+  return (
+    <div className="cd-overlay" onClick={onClose}>
+      <div className="island cd-card" onClick={(e) => e.stopPropagation()}>
+        <div className="cd-head">
+          <div>
+            <div className="cd-title">{req.label}</div>
+            <div className="cd-sub">{isCredits ? `Need ${need} cr · ${haveLabel} · ${remainingCredits} cr left` : `${haveLabel} · need ${need} courses`}</div>
+          </div>
+          <button className="cd-close" onClick={onClose}>×</button>
+        </div>
+        <div className="cd-tabs">
+          <button className={tab === "rec" ? "active" : ""} onClick={() => setTab("rec")}>★ Recommended</button>
+          <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>All available ({all.length})</button>
+        </div>
+        <div className="cd-body">
+          {tab === "rec" && (
+            <>
+              <p className="cd-note">Ranked for your degree — credit fit to what you still need, double-counted requirements, and CS relevance, excluding courses you've taken.</p>
+              {remainingCredits === 0 && isCredits && <p className="cd-note" style={{ color: "var(--enrolled)" }}>This requirement is already met — extra courses would double-count or count as electives.</p>}
+              {top.map((r) => (
+                <CourseRow key={r.id} id={r.id} reasons={r.reasons} chosen={chosenSet.has(r.id)} onAdd={() => addChosen(r.id)} onRemove={() => removeChosen(r.id)} />
+              ))}
+            </>
+          )}
+          {tab === "all" && all.map((c) => (
+            <CourseRow key={c.id} id={c.id} chosen={chosenSet.has(c.id)} onAdd={() => addChosen(c.id)} onRemove={() => removeChosen(c.id)} />
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -347,6 +416,8 @@ export default function App() {
   const [showPaste, setShowPaste] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [now, setNow] = useState(new Date());
+  const [detailReq, setDetailReq] = useState(null);
+  const didAutoSync = useRef(false);
 
   const major = MAJORS.cs;
   const completedSet = useMemo(() => new Set(completed), [completed]);
@@ -381,6 +452,12 @@ export default function App() {
     if (backendOnline) { try { const { token: tk, user: u } = await devLogin(profile); setUser(u); setToken(tk); return; } catch { /* local */ } }
     setUser(profile);
   }
+  // NetID sign-in pulls MyPlan automatically (no manual Re-sync needed).
+  useEffect(() => {
+    if (user?.provider === "netid" && !snapshot && !syncing && !didAutoSync.current) {
+      didAutoSync.current = true; handleSync();
+    }
+  }, [user, snapshot, syncing]); // eslint-disable-line
   async function handleSync() {
     setSyncing(true);
     const snap = await fetchMyPlanSnapshot();
@@ -462,7 +539,7 @@ export default function App() {
           <div>
             {view === "plan"
               ? <PlanBoard major={major} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
-              : <Requirements major={major} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} addChosen={addChosen} removeChosen={removeChosen} />}
+              : <Requirements major={major} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
             <AuditCard major={major} snapshot={snapshot} completedSet={completedSet} onResync={handleSync} syncing={syncing} />
@@ -485,6 +562,11 @@ export default function App() {
         <button className="primary" onClick={autoPlan}>{I.spark}<span>Auto Plan</span></button>
         <button className="ic-btn" onClick={() => setSchedule({})}>{I.undo}</button>
       </div>
+
+      {detailReq && (
+        <CategoryDetail req={detailReq} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
+          addChosen={addChosen} removeChosen={removeChosen} onClose={() => setDetailReq(null)} />
+      )}
     </>
   );
 }

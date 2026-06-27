@@ -58,29 +58,40 @@ export const COURSES = {
   ESS101:  { id: "ESS101",  title: "Geology & Society (W)", credits: 5, category: "science", prereqs: [] },
   CSE391:  { id: "CSE391",  title: "System & Software Tools", credits: 1, category: "core400", prereqs: [] },
 
-  // Social Sciences (real qualifying courses + the student's completed ones)
-  ECON200: { id: "ECON200", title: "Introduction to Microeconomics", credits: 5, category: "social", prereqs: [] },
-  HSTAA101:{ id: "HSTAA101", title: "Survey of History of the US", credits: 5, category: "social", prereqs: [] },
-  POLS202: { id: "POLS202", title: "Introduction to American Politics", credits: 5, category: "social", prereqs: [] },
-  PSYCH101:{ id: "PSYCH101", title: "Introduction to Psychology", credits: 5, category: "social", prereqs: [] },
-  SOC110:  { id: "SOC110",  title: "Survey of Sociology", credits: 5, category: "social", prereqs: [] },
-  ANTH100: { id: "ANTH100", title: "Introduction to Anthropology", credits: 5, category: "social", prereqs: [] },
-  GEOG123: { id: "GEOG123", title: "Introduction to Globalization", credits: 5, category: "social", prereqs: [] },
+  // Social Sciences (gened: which areas a course can satisfy; csRelevant: degree fit)
+  ECON200: { id: "ECON200", title: "Introduction to Microeconomics", credits: 5, category: "social", prereqs: [], gened: ["social"], csRelevant: true, relevanceNote: "Quantitative modeling — pairs well with CS" },
+  HSTAA101:{ id: "HSTAA101", title: "Survey of History of the US", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  POLS202: { id: "POLS202", title: "Introduction to American Politics", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  POLS101: { id: "POLS101", title: "Introduction to Politics", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  PSYCH101:{ id: "PSYCH101", title: "Introduction to Psychology", credits: 5, category: "social", prereqs: [], gened: ["social"], csRelevant: true, relevanceNote: "Foundation for human-computer interaction" },
+  SOC110:  { id: "SOC110",  title: "Survey of Sociology", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  ANTH100: { id: "ANTH100", title: "Introduction to Anthropology", credits: 5, category: "social", prereqs: [], gened: ["social", "diversity"] },
+  GEOG123: { id: "GEOG123", title: "Introduction to Globalization", credits: 5, category: "social", prereqs: [], gened: ["social", "diversity"] },
+  INFO200: { id: "INFO200", title: "Intellectual Foundations of Informatics", credits: 5, category: "social", prereqs: [], gened: ["social"], csRelevant: true, relevanceNote: "Information & society — directly CS-adjacent" },
 
-  // Arts & Humanities (real courses pulled from MyPlan course search, A&H filter)
-  AIS170:  { id: "AIS170",  title: "American Indian Art & Aesthetics", credits: 5, category: "arts", prereqs: [] },
-  CHID120: { id: "CHID120", title: "Yoga: Past and Present", credits: 5, category: "arts", prereqs: [] },
-  CMS297:  { id: "CMS297",  title: "Cinema & Media Studies", credits: 5, category: "arts", prereqs: [] },
-  COM200:  { id: "COM200",  title: "Introduction to Communication", credits: 5, category: "arts", prereqs: [] },
-  PHIL100: { id: "PHIL100", title: "Introduction to Philosophy", credits: 5, category: "arts", prereqs: [] },
-  DRAMA101:{ id: "DRAMA101", title: "Introduction to the Theatre", credits: 5, category: "arts", prereqs: [] },
-  MUSIC120:{ id: "MUSIC120", title: "Survey of Music", credits: 5, category: "arts", prereqs: [] },
-  ENGL200: { id: "ENGL200", title: "Reading Literary Forms", credits: 5, category: "arts", prereqs: [] },
+  // Arts & Humanities (real courses + gen-ed codes pulled from MyPlan A&H search)
+  AIS170:  { id: "AIS170",  title: "American Indian Art & Aesthetics", credits: 5, category: "arts", prereqs: [], gened: ["arts", "diversity"] },
+  CHID120: { id: "CHID120", title: "Yoga: Past and Present", credits: 5, category: "arts", prereqs: [], gened: ["arts", "social", "diversity"] },
+  CMS297:  { id: "CMS297",  title: "Cinema & Media Studies", credits: 5, category: "arts", prereqs: [], gened: ["arts"], csRelevant: true, relevanceNote: "Media + computation crossover" },
+  COM200:  { id: "COM200",  title: "Introduction to Communication", credits: 5, category: "arts", prereqs: [], gened: ["arts", "social"], csRelevant: true, relevanceNote: "Communication skills for tech roles" },
+  PHIL100: { id: "PHIL100", title: "Introduction to Philosophy", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  PHIL120: { id: "PHIL120", title: "Introduction to Logic", credits: 5, category: "arts", prereqs: [], gened: ["arts"], csRelevant: true, relevanceNote: "Formal logic — basis of CSE 311" },
+  PHIL338: { id: "PHIL338", title: "Ethics in the Information Age", credits: 5, category: "arts", prereqs: [], gened: ["arts"], csRelevant: true, relevanceNote: "Tech ethics — directly CS-relevant" },
+  DRAMA101:{ id: "DRAMA101", title: "Introduction to the Theatre", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  MUSIC120:{ id: "MUSIC120", title: "Survey of Music", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  MUSIC131:{ id: "MUSIC131", title: "History of Jazz", credits: 3, category: "arts", prereqs: [], gened: ["arts"] },
+  DRAMA210:{ id: "DRAMA210", title: "Theatre History", credits: 3, category: "arts", prereqs: [], gened: ["arts"] },
+  ENGL200: { id: "ENGL200", title: "Reading Literary Forms", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  ARTH201: { id: "ARTH201", title: "Survey of Western Art", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
 
   // Diversity
-  AES150:  { id: "AES150",  title: "Intro to American Ethnic Studies (DIV)", credits: 5, category: "diversity", prereqs: [] },
-  GWSS200: { id: "GWSS200", title: "Intro to Gender, Women & Sexuality (DIV)", credits: 5, category: "diversity", prereqs: [] },
+  AES150:  { id: "AES150",  title: "Intro to American Ethnic Studies", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
+  GWSS200: { id: "GWSS200", title: "Intro to Gender, Women & Sexuality", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
+  CHID101: { id: "CHID101", title: "The Idea of Diversity", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "arts"] },
 };
+
+// Tag natural-science courses with a gened area for the recommender.
+for (const id of ["CHEM142", "CHEM152", "PHYS121", "STAT290"]) if (COURSES[id]) COURSES[id].gened = ["science"];
 
 // ---------------------------------------------------------------------------
 // Major requirements, mirroring the real DARS audit structure for UW CS.
@@ -98,17 +109,17 @@ export const MAJORS = {
     blurb: "Bachelor of Science in Computer Science, College of Arts & Sciences. Catalog AU 25.",
     requirements: [
       { id: "engl", label: "English Composition", kind: "info", met: true, note: "Satisfied by ENGL 111." },
-      { id: "writing", label: "Writing (W) — 10 cr", kind: "credits", needCredits: 10, courses: ["ESS101"] },
-      { id: "diversity", label: "Diversity — 5 cr", kind: "credits", needCredits: 5, courses: ["AES150", "GWSS200"] },
-      { id: "ah", label: "Arts & Humanities — 20 cr", kind: "credits", needCredits: 20,
-        courses: ["AIS170", "CHID120", "CMS297", "COM200", "PHIL100", "DRAMA101", "MUSIC120", "ENGL200"] },
-      { id: "ssc", label: "Social Sciences — 20 cr", kind: "credits", needCredits: 20,
-        courses: ["ECON200", "HSTAA101", "POLS202", "PSYCH101", "SOC110", "ANTH100", "GEOG123"] },
-      { id: "nsc", label: "Natural Sciences — 20 cr", kind: "credits", needCredits: 20,
+      { id: "writing", label: "Writing (W) — 10 cr", kind: "credits", area: "writing", needCredits: 10, courses: ["ESS101"] },
+      { id: "diversity", label: "Diversity — 5 cr", kind: "credits", area: "diversity", needCredits: 5, courses: ["AES150", "GWSS200", "CHID101"] },
+      { id: "ah", label: "Arts & Humanities — 20 cr", kind: "credits", area: "arts", needCredits: 20,
+        courses: ["AIS170", "CHID120", "CMS297", "COM200", "PHIL100", "PHIL120", "PHIL338", "DRAMA101", "MUSIC120", "MUSIC131", "DRAMA210", "ENGL200", "ARTH201"] },
+      { id: "ssc", label: "Social Sciences — 20 cr", kind: "credits", area: "social", needCredits: 20,
+        courses: ["ECON200", "HSTAA101", "POLS202", "POLS101", "PSYCH101", "SOC110", "ANTH100", "GEOG123", "INFO200"] },
+      { id: "nsc", label: "Natural Sciences — 20 cr", kind: "credits", area: "science", needCredits: 20,
         courses: ["CHEM142", "CHEM152", "PHYS121", "STAT290"] },
       { id: "math", label: "Mathematics", kind: "all", courses: ["MATH124", "MATH125", "MATH126", "MATH208"] },
       { id: "fund", label: "CSE Fundamentals", kind: "all", courses: ["CSE123", "CSE311", "CSE312", "CSE331", "CSE332", "CSE351"] },
-      { id: "core400", label: "Advanced CSE — Core & Electives (choose 7)", kind: "choose", needCount: 7,
+      { id: "core400", label: "Advanced CSE — Core & Electives (choose 7)", kind: "choose", area: "core400", needCount: 7,
         courses: ["CSE401", "CSE421", "CSE451", "CSE461", "CSE446", "CSE455", "CSE403", "CSE414", "CSE333"] },
     ],
   },
