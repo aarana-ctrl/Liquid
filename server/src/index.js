@@ -99,6 +99,18 @@ app.post("/api/snapshot", auth, async (req, res) => {
   res.json(await saveSnapshot(req.user.sub, snap));
 });
 
+// Browser-extension import: the extension reads the student's DARS page and
+// POSTs the text here, authenticated with the app JWT it picked up from the
+// logged-in web app. Permissive CORS so the extension can call it from any origin.
+app.options("/api/import/dars", cors({ origin: true }));
+app.post("/api/import/dars", cors({ origin: true }), auth, async (req, res) => {
+  const text = req.body?.darsText;
+  if (!text || typeof text !== "string") return res.status(400).json({ error: "darsText required" });
+  const snap = parseDars(text);
+  await saveSnapshot(req.user.sub, snap);
+  res.json({ ok: true, audit: snap.audit, program: snap.program, earnedCount: snap.earned.length, inProgressCount: snap.inProgress.length });
+});
+
 // ---- MyPlan handoff (bookmarklet import) -----------------------------------
 // The student logs into MyPlan themselves, then runs a one-time bookmarklet that
 // POSTs the DARS page text here using a short-lived code tied to their account.

@@ -141,7 +141,7 @@ body {
 
 /* quarter columns */
 .board { flex: 1 1 auto; min-height: 0; position: relative; padding: 16px 18px; }
-.cols { height: 100%; display: grid; grid-auto-flow: column; grid-auto-columns: 230px; gap: 16px; overflow: auto; padding-bottom: 6px; align-content: start; }
+.cols { position: relative; height: 100%; display: grid; grid-auto-flow: column; grid-auto-columns: 230px; gap: 16px; overflow: auto; padding-bottom: 6px; align-content: start; }
 .qcol { min-width: 0; }
 .qcol-cur .qcol-line { background: linear-gradient(90deg, var(--enrolled), var(--accent-2)); opacity: 1; }
 .qcol-cur h4 { color: var(--enrolled); }
@@ -187,7 +187,10 @@ body {
 .ccard .viol { font-size: 9.5px; color: #e0607a; margin-top: 5px; }
 .qcol .empty { font-size: 11px; color: var(--text-faint); text-align: center; padding: 14px 0; border: 1px dashed var(--glass-brd); border-radius: 12px; }
 
-.connectors { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+.connectors { position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; overflow: visible; }
+.conn { stroke-dasharray: 1; stroke-dashoffset: 1; animation: connDraw 0.55s ease forwards; }
+@keyframes connDraw { to { stroke-dashoffset: 0; } }
+.qcol { position: relative; z-index: 1; }   /* cards paint above the connector lines */
 
 /* ---- side cards ---- */
 .side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 2px; }

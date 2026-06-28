@@ -23,7 +23,8 @@ function parseQ(code) {
 }
 function currentAbs() {
   const d = new Date(), mo = d.getMonth() + 1, y = d.getFullYear();
-  const term = mo <= 3 ? "WI" : mo <= 6 ? "SP" : mo <= 8 ? "SU" : "AU";
+  // UW: Winter Jan–Feb, Spring Mar–May, Summer Jun–Aug, Autumn Sep–Dec
+  const term = mo <= 2 ? "WI" : mo <= 5 ? "SP" : mo <= 8 ? "SU" : "AU";
   return qAbs(term, y);
 }
 // next `n` quarters from startAbs; optionally skip summers (for auto-plan loads)
@@ -203,27 +204,34 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
   const drag = (id) => ({ draggable: true, onDragStart: () => setDragId(id), onDragEnd: () => setDragId(null) });
   const drop = (h) => ({ onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); if (dragId) h(dragId); setDragId(null); } });
 
-  // connectors
+  // Connectors live INSIDE the scroll content (in content coordinates) so they
+  // move with the cards — no recompute on scroll, no "random" redraw. We only
+  // draw prerequisite → course links left-to-right (prereq in an earlier column).
+  const [svgSize, setSvgSize] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
     function compute() {
-      const board = boardRef.current; if (!board) { setEdges([]); return; }
-      const br = board.getBoundingClientRect(); const out = [];
+      const cols = colsRef.current; if (!cols) { setEdges([]); return; }
+      const cr = cols.getBoundingClientRect();
+      const ox = cr.left - cols.scrollLeft, oy = cr.top - cols.scrollTop; // content origin
+      const out = [];
       planArr.forEach((id) => {
         const a = cardRefs.current[id]; if (!a) return;
         (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => {
           const b = cardRefs.current[p]; if (!b) return;
           const ar = a.getBoundingClientRect(), pr = b.getBoundingClientRect();
-          out.push({ key: `${p}-${id}`, x2: ar.left - br.left, y2: ar.top - br.top + ar.height / 2, x1: pr.right - br.left, y1: pr.top - br.top + pr.height / 2 });
+          const x1 = pr.right - ox, x2 = ar.left - ox;
+          if (x1 >= x2 - 4) return; // only left-to-right (prereq earlier)
+          out.push({ key: `${p}-${id}`, x1, y1: pr.top - oy + pr.height / 2, x2, y2: ar.top - oy + ar.height / 2 });
         });
       });
+      setSvgSize({ w: cols.scrollWidth, h: cols.scrollHeight });
       setEdges(out);
     }
     compute();
-    const ro = new ResizeObserver(compute); if (boardRef.current) ro.observe(boardRef.current);
-    const cols = colsRef.current; if (cols) cols.addEventListener("scroll", compute);
+    const ro = new ResizeObserver(compute); if (colsRef.current) ro.observe(colsRef.current);
     window.addEventListener("resize", compute);
-    return () => { ro.disconnect(); if (cols) cols.removeEventListener("scroll", compute); window.removeEventListener("resize", compute); };
-  }, [planArr.join(","), JSON.stringify(schedule), mode]);
+    return () => { ro.disconnect(); window.removeEventListener("resize", compute); };
+  }, [planArr.join(","), JSON.stringify(schedule), JSON.stringify(courseTerms), mode]);
 
   // center the current quarter on first render
   useEffect(() => {
@@ -266,11 +274,16 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
       </div>
 
       <div className="board">
-        <svg className="connectors">
-          {edges.map((e) => { const mx = (e.x1 + e.x2) / 2;
-            return <path key={e.key} d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`} fill="none" stroke="rgba(139,123,240,0.5)" strokeWidth="1.5" />; })}
-        </svg>
         <div className="cols" ref={colsRef}>
+          <svg className="connectors" width={svgSize.w} height={svgSize.h} style={{ width: svgSize.w, height: svgSize.h }}>
+            {edges.map((e) => { const mx = (e.x1 + e.x2) / 2;
+              return <path key={e.key} className="conn" pathLength="1"
+                d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`}
+                fill="none" stroke="url(#connGrad)" strokeWidth="1.6" />; })}
+            <defs><linearGradient id="connGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="rgba(95,208,168,0.7)" /><stop offset="1" stopColor="rgba(139,123,240,0.7)" />
+            </linearGradient></defs>
+          </svg>
           {quarters.map((abs) => {
             const isCur = abs === cur, isPast = abs < cur;
             const tag = isCur ? "This quarter" : isPast ? "Completed" : "Upcoming";
@@ -602,6 +615,8 @@ export default function App() {
   const planIds = useMemo(() => buildPlanIds(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
 
   useEffect(() => { apiHealth().then((j) => { setBackendOnline(!!j?.ok); setOidcEnabled(j?.oidc || {}); }); }, []);
+  // expose the API base so the browser extension can sync on the student's behalf
+  useEffect(() => { try { localStorage.setItem("lp_api", API_BASE); } catch { /* ignore */ } }, []);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
   // session restore, and capture the token returned from a UW NetID (OIDC) redirect
   useEffect(() => {
