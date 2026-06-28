@@ -2,18 +2,35 @@ import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "re
 import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript } from "./data.js";
 import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE } from "./api.js";
+import { MINORS, buildProgram } from "./data.js";
 import { recommend, poolForArea, computeRemaining, autoSelect } from "./recommend.js";
 import bgUrl from "./bg.jpg";
 
-// ---- quarter calendar ------------------------------------------------------
-const TERMS = ["Autumn", "Winter", "Spring"];
-const QUARTERS = [];
-for (let y = 1; y <= 4; y++) for (const t of TERMS) QUARTERS.push({ idx: QUARTERS.length, term: t });
-const BASE_AUTUMN = 2026;
-function qLabel(i) {
-  const ti = i % 3, yo = Math.floor(i / 3);
-  const year = ti === 0 ? BASE_AUTUMN + yo : BASE_AUTUMN + 1 + yo;
-  return { term: TERMS[ti], year };
+// ---- quarter calendar (UW: Autumn, Winter, Spring, Summer) ------------------
+// Chronological order within a calendar year: Winter < Spring < Summer < Autumn.
+// A quarter is identified by an absolute index = year*4 + termOrder.
+const TERM_NAME = { AU: "Autumn", WI: "Winter", SP: "Spring", SU: "Summer" };
+const TERM_ORDER = { WI: 0, SP: 1, SU: 2, AU: 3 };
+const ORDER_TERM = ["WI", "SP", "SU", "AU"];
+const qAbs = (term, year) => year * 4 + TERM_ORDER[term];
+const absToQ = (abs) => ({ term: ORDER_TERM[((abs % 4) + 4) % 4], year: Math.floor(abs / 4) });
+const qLabelAbs = (abs) => { const q = absToQ(abs); return `${TERM_NAME[q.term]} ${q.year}`; };
+const qShort = (abs) => { const q = absToQ(abs); return `${q.term}${String(q.year).slice(2)}`; };
+function parseQ(code) {
+  const m = /^([A-Z]{2})(\d{2})$/.exec((code || "").toUpperCase());
+  if (!m || TERM_ORDER[m[1]] == null) return null;
+  return qAbs(m[1], 2000 + +m[2]);
+}
+function currentAbs() {
+  const d = new Date(), mo = d.getMonth() + 1, y = d.getFullYear();
+  const term = mo <= 3 ? "WI" : mo <= 6 ? "SP" : mo <= 8 ? "SU" : "AU";
+  return qAbs(term, y);
+}
+// next `n` quarters from startAbs; optionally skip summers (for auto-plan loads)
+function nextQuarters(startAbs, n, includeSummer) {
+  const out = []; let a = startAbs;
+  while (out.length < n) { if (includeSummer || absToQ(a).term !== "SU") out.push(a); a++; }
+  return out;
 }
 const CAT_VAR = {
   intro: "var(--cat-intro)", math: "var(--cat-math)", core: "var(--cat-core)", core400: "var(--cat-core400)",
@@ -46,21 +63,28 @@ function depthFn(planIds) {
   };
   return d;
 }
-// Spread the remaining (non-completed, non-in-progress) courses across quarters,
-// respecting prerequisites and a ~15 cr/quarter target.
+// Spread remaining (non-completed, non-in-progress) courses across UPCOMING
+// quarters (starting the quarter after the current one, skipping summers),
+// respecting prerequisites and a ~15 cr/quarter target. Returns id -> absIndex.
 function scheduleAll(planIds, completedSet, ipSet) {
   const remaining = [...planIds].filter((id) => !completedSet.has(id) && !ipSet.has(id));
   const depth = depthFn(planIds);
   const satisfied = new Set([...completedSet, ...ipSet]);
   const order = [...remaining].sort((a, b) => depth(a) - depth(b) || COURSES[b].credits - COURSES[a].credits);
-  const placed = {}, load = QUARTERS.map(() => 0), target = 15;
+  const quarters = nextQuarters(currentAbs() + 1, 16, false); // 16 non-summer quarters of runway
+  const load = {}; quarters.forEach((q) => (load[q] = 0));
+  const placed = {}; const target = 15;
   order.forEach((id) => {
-    let earliest = 0;
-    (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => { if (satisfied.has(p)) return; if (placed[p] != null) earliest = Math.max(earliest, placed[p] + 1); });
-    let q = earliest;
-    while (q < QUARTERS.length && load[q] + COURSES[id].credits > target && load[q] >= target - 3) q++;
-    if (q >= QUARTERS.length) q = QUARTERS.length - 1;
-    placed[id] = q; load[q] += COURSES[id].credits;
+    // earliest quarter index allowed by prerequisites
+    let minSlot = 0;
+    (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => {
+      if (satisfied.has(p)) return;
+      if (placed[p] != null) { const s = quarters.indexOf(placed[p]); if (s >= 0) minSlot = Math.max(minSlot, s + 1); }
+    });
+    let s = minSlot;
+    while (s < quarters.length - 1 && load[quarters[s]] + COURSES[id].credits > target && load[quarters[s]] >= target - 3) s++;
+    if (s >= quarters.length) s = quarters.length - 1;
+    placed[id] = quarters[s]; load[quarters[s]] += COURSES[id].credits;
   });
   return placed;
 }
@@ -139,42 +163,51 @@ function Login({ onSignIn, backendOnline, oidcEnabled }) {
 }
 
 // ---- plan board (central island) -------------------------------------------
-function PlanBoard({ major, snapshot, planIds, completedSet, ipSet, schedule, setSchedule, mode, setMode }) {
-  const boardRef = useRef(null), colsRef = useRef(null), cardRefs = useRef({});
+function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerms, schedule, setSchedule, mode, setMode }) {
+  const boardRef = useRef(null), colsRef = useRef(null), cardRefs = useRef({}), curColRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [dragId, setDragId] = useState(null);
+  const cur = currentAbs();
 
-  const ipArr = useMemo(() => [...ipSet].filter((id) => COURSES[id]), [ipSet]);
-  const remaining = useMemo(() => [...planIds].filter((id) => !completedSet.has(id) && !ipSet.has(id)), [planIds, completedSet, ipSet]);
+  // absolute quarter for a course (completed/in-progress use the real DARS term)
+  const getAbs = (id) => {
+    if (completedSet.has(id)) return parseQ(courseTerms[id]) ?? cur - 1;
+    if (ipSet.has(id)) return parseQ(courseTerms[id]) ?? cur;
+    return schedule[id] ?? null;
+  };
+  const planArr = useMemo(() => [...planIds], [planIds]);
+  const remaining = planArr.filter((id) => !completedSet.has(id) && !ipSet.has(id));
   const pool = remaining.filter((id) => schedule[id] == null);
 
-  const maxUsed = remaining.reduce((m, id) => (schedule[id] != null ? Math.max(m, schedule[id]) : m), 0);
-  const visible = Math.min(QUARTERS.length, Math.max(3, maxUsed + 2));
+  // timeline range: from the earliest placed quarter through a future runway
+  const placedAbs = planArr.map(getAbs).filter((a) => a != null);
+  const minAbs = placedAbs.length ? Math.min(cur, ...placedAbs) : cur;
+  const maxAbs = Math.max(cur + 6, ...(placedAbs.length ? placedAbs : [cur]));
+  const quarters = []; for (let a = minAbs; a <= maxAbs; a++) quarters.push(a);
 
-  const satisfied = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
+  const contentOf = (abs) => planArr.filter((id) => getAbs(id) === abs)
+    .sort((x, y) => (completedSet.has(y) - completedSet.has(x)) || (ipSet.has(y) - ipSet.has(x)));
+  const creditsOf = (abs) => contentOf(abs).reduce((s, id) => s + COURSES[id].credits, 0);
+
   function violation(id) {
     const q = schedule[id]; if (q == null) return false;
     return (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).some((p) => {
-      if (satisfied.has(p)) return false; const pq = (ipSet.has(p) ? 0 : schedule[p]); return pq == null || pq >= q;
+      if (completedSet.has(p) || ipSet.has(p)) return false;
+      const pa = schedule[p]; return pa == null || pa >= q;
     });
   }
-  const colContents = (c) => [
-    ...(c === 0 ? ipArr : []),
-    ...remaining.filter((id) => schedule[id] === c),
-  ];
-  const colCredits = (c) => colContents(c).reduce((s, id) => s + COURSES[id].credits, 0);
 
-  const place = (id, c) => setSchedule((s) => ({ ...s, [id]: c }));
+  const place = (id, abs) => { if (!completedSet.has(id) && !ipSet.has(id)) setSchedule((s) => ({ ...s, [id]: abs })); };
   const unplace = (id) => setSchedule((s) => { const n = { ...s }; delete n[id]; return n; });
   const drag = (id) => ({ draggable: true, onDragStart: () => setDragId(id), onDragEnd: () => setDragId(null) });
   const drop = (h) => ({ onDragOver: (e) => e.preventDefault(), onDrop: (e) => { e.preventDefault(); if (dragId) h(dragId); setDragId(null); } });
 
-  // prerequisite connectors
+  // connectors
   useLayoutEffect(() => {
     function compute() {
       const board = boardRef.current; if (!board) { setEdges([]); return; }
       const br = board.getBoundingClientRect(); const out = [];
-      [...planIds].forEach((id) => {
+      planArr.forEach((id) => {
         const a = cardRefs.current[id]; if (!a) return;
         (COURSES[id].prereqs || []).filter((p) => planIds.has(p)).forEach((p) => {
           const b = cardRefs.current[p]; if (!b) return;
@@ -189,21 +222,28 @@ function PlanBoard({ major, snapshot, planIds, completedSet, ipSet, schedule, se
     const cols = colsRef.current; if (cols) cols.addEventListener("scroll", compute);
     window.addEventListener("resize", compute);
     return () => { ro.disconnect(); if (cols) cols.removeEventListener("scroll", compute); window.removeEventListener("resize", compute); };
-  }, [planIds, schedule, mode, visible, ipArr.length]);
+  }, [planArr.join(","), JSON.stringify(schedule), mode]);
 
-  function card(id, colIdx) {
-    const ip = ipSet.has(id);
-    const viol = violation(id);
-    const cls = viol ? "locked violation" : ip ? "enrolled" : colIdx >= 2 ? "projected" : "planned";
-    const label = viol ? "Prereq needed" : ip ? "Enrolled" : colIdx >= 2 ? "Projected" : "Planned";
+  // center the current quarter on first render
+  useEffect(() => {
+    if (curColRef.current && colsRef.current) {
+      const c = curColRef.current, parent = colsRef.current;
+      parent.scrollLeft = c.offsetLeft - parent.clientWidth / 2 + c.clientWidth / 2;
+    }
+  }, []); // eslint-disable-line
+
+  function card(id) {
+    const done = completedSet.has(id), ip = ipSet.has(id), viol = violation(id);
+    const cls = done ? "done" : ip ? "enrolled" : viol ? "locked violation" : "planned";
+    const label = done ? "Completed" : ip ? "In progress" : viol ? "Prereq needed" : "Planned";
     const c = COURSES[id];
     return (
       <div key={id} ref={(el) => (cardRefs.current[id] = el)} className={`ccard ${cls}`}
-        {...(ip ? {} : drag(id))} onClick={() => !ip && unplace(id)} title={ip ? "" : "Click to unplace"}>
-        <div className="ch"><span className="code">{id.replace(/(\d)/, " $1")}</span><span className="cr">{c.credits}cr</span></div>
+        {...(done || ip ? {} : drag(id))} onClick={() => !done && !ip && unplace(id)} title={done || ip ? "From your transcript" : "Click to unschedule"}>
+        <div className="ch"><span className="code">{id.replace(/([A-Z])(\d)/, "$1 $2")}</span><span className="cr">{c.credits}cr</span></div>
         <div className="ttl">{c.title}</div>
         <div className="st"><i />{label}</div>
-        {viol && <div className="viol">⚠ prerequisite not yet planned</div>}
+        {viol && <div className="viol">⚠ prerequisite isn't earlier in your plan</div>}
       </div>
     );
   }
@@ -213,12 +253,12 @@ function PlanBoard({ major, snapshot, planIds, completedSet, ipSet, schedule, se
       <div className="plan-head">
         <div className="plan-uni">
           <div className="uni-badge">W</div>
-          <div><h3>{UNIVERSITY.name} ▾</h3><span>{major.name.replace(" (B.S.)", "")} · B.S.</span></div>
+          <div><h3>{UNIVERSITY.name} ▾</h3><span>{program.name}</span></div>
         </div>
         <div className="plan-head-right">
-          <span className="yearsel">{snapshot?.catalogYear || "AU 25"} ▾</span>
+          <span className="yearsel">{snapshot?.catalogYear || "AU 25"}</span>
           <div className="seg">
-            <button className={mode === "plan" ? "active" : ""} onClick={() => setMode("plan")}>Plan</button>
+            <button className={mode === "plan" ? "active" : ""} onClick={() => setMode("plan")}>Timeline</button>
             <button className={mode === "grid" ? "active" : ""} onClick={() => setMode("grid")}>Grid</button>
           </div>
         </div>
@@ -230,24 +270,26 @@ function PlanBoard({ major, snapshot, planIds, completedSet, ipSet, schedule, se
             return <path key={e.key} d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`} fill="none" stroke="rgba(139,123,240,0.5)" strokeWidth="1.5" />; })}
         </svg>
         <div className="cols" ref={colsRef}>
-          {Array.from({ length: visible }, (_, c) => {
-            const lab = qLabel(c); const tag = c === 0 ? "In progress" : c === 1 ? "Planned" : "Projected";
+          {quarters.map((abs) => {
+            const isCur = abs === cur, isPast = abs < cur;
+            const tag = isCur ? "This quarter" : isPast ? "Completed" : "Upcoming";
+            const list = contentOf(abs);
             return (
-              <div key={c} className="qcol" {...drop((id) => place(id, c))}>
-                <div className="qcol-head"><h4>{lab.term} {lab.year}</h4><span className="cr">{colCredits(c)} cr</span></div>
+              <div key={abs} ref={isCur ? curColRef : null} className={`qcol ${isCur ? "qcol-cur" : ""}`} {...drop((id) => place(id, abs))}>
+                <div className="qcol-head"><h4>{qLabelAbs(abs)}</h4><span className="cr">{creditsOf(abs)} cr</span></div>
                 <div className="qcol-tag">{tag}</div>
                 <div className="qcol-line" />
-                {colContents(c).map((id) => card(id, c))}
-                {colContents(c).length === 0 && <div className="empty">drop course</div>}
+                {list.map((id) => card(id))}
+                {list.length === 0 && <div className="empty">{isPast ? "—" : "drop course"}</div>}
               </div>
             );
           })}
           {pool.length > 0 && (
-            <div className="qcol" {...drop(unplace)}>
+            <div className="qcol qcol-pool" {...drop(unplace)}>
               <div className="qcol-head"><h4>Unscheduled</h4><span className="cr">{pool.length}</span></div>
               <div className="qcol-tag">To place</div>
               <div className="qcol-line" style={{ background: "linear-gradient(90deg, var(--text-faint), transparent)" }} />
-              {pool.map((id) => card(id, 1))}
+              {pool.map((id) => card(id))}
             </div>
           )}
         </div>
@@ -257,38 +299,39 @@ function PlanBoard({ major, snapshot, planIds, completedSet, ipSet, schedule, se
 }
 
 // ---- side cards ------------------------------------------------------------
-function AuditCard({ major, snapshot, completedSet, onResync, syncing }) {
+const DARS_AUDIT_URL = "https://myplan.uw.edu/audit/#/degree";
+function AuditCard({ program, snapshot, onResync, syncing }) {
   const a = snapshot?.audit;
-  const earned = a?.earned ?? 0, total = a?.totalRequired ?? major.totalCredits;
+  const earned = a?.earned ?? 0, total = a?.totalRequired ?? program.totalCredits;
   const pct = Math.round((earned / total) * 100);
   return (
     <div className="island card">
       <div className="eyebrow">Degree Audit {I.grad}</div>
-      <h3>{(snapshot?.program || major.name)}</h3>
-      <div className="sub">College of Arts &amp; Sciences{snapshot ? ` · GPA ${snapshot.gpa}` : ""}</div>
-      <div className="bar-row"><div className="bl"><span>Major</span><b>{pct}%</b></div><div className="bar"><div style={{ width: `${pct}%` }} /></div></div>
+      <h3>{(snapshot?.program || program.name)}</h3>
+      <div className="sub">{program.school || "College of Arts & Sciences"}{snapshot ? ` · GPA ${snapshot.gpa}` : ""}</div>
+      <div className="bar-row"><div className="bl"><span>Progress</span><b>{pct}%</b></div><div className="bar"><div style={{ width: `${pct}%` }} /></div></div>
       <div className="card-foot">
         <span className="big">{earned} / {total} cr</span>
         <span className="ontrack"><i />{pct >= 100 ? "Complete" : "On track"}</span>
       </div>
       <button className="resync" onClick={onResync} disabled={syncing}>{syncing ? "Reading MyPlan…" : snapshot ? "Re-sync MyPlan (DARS)" : "Connect & pull from MyPlan"}</button>
+      <a className="audit-link" href={DARS_AUDIT_URL} target="_blank" rel="noreferrer">Open my DARS audit ↗</a>
     </div>
   );
 }
 function ThisQuarter({ ipSet }) {
   const list = [...ipSet].filter((id) => COURSES[id]);
   const cr = list.reduce((s, id) => s + COURSES[id].credits, 0);
-  const l = qLabel(0);
   return (
     <div className="island card">
       <div className="eyebrow">This Quarter <span className="pill-sm">{cr} cr</span></div>
       <div style={{ marginTop: 12 }}>
         {list.map((id) => (
-          <div key={id} className="tq-row"><i style={{ background: CAT_VAR[COURSES[id].category] }} /><span className="c">{id.replace(/(\d)/, " $1")}</span><span className="t">{COURSES[id].title}</span></div>
+          <div key={id} className="tq-row"><i style={{ background: CAT_VAR[COURSES[id].category] }} /><span className="c">{id.replace(/([A-Z])(\d)/, "$1 $2")}</span><span className="t">{COURSES[id].title}</span></div>
         ))}
-        {list.length === 0 && <div className="rb-empty">No enrolled courses — connect MyPlan.</div>}
+        {list.length === 0 && <div className="rb-empty">No enrolled courses — sync MyPlan.</div>}
       </div>
-      <div className="tq-foot"><span>{l.term} {l.year} · {list.length} courses</span><span>no conflicts</span></div>
+      <div className="tq-foot"><span>{qLabelAbs(currentAbs())} · {list.length} courses</span><span>no conflicts</span></div>
     </div>
   );
 }
@@ -410,24 +453,61 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
   );
 }
 
+// ---- majors & minors picker ------------------------------------------------
+const AREA_NAME = { science: "Natural Science", arts: "Arts & Hum.", social: "Social Sci.", core400: "Advanced", writing: "Writing", diversity: "Diversity" };
+function describeDelta(d) {
+  if (d.kind === "all") return `+${d.courses.length} required courses`;
+  if (d.addCredits != null) return `+${d.addCredits} ${AREA_NAME[d.area] || d.area} cr`;
+  if (d.addCount != null) return `+${d.addCount} ${AREA_NAME[d.area] || d.area} courses`;
+  return "";
+}
+function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose }) {
+  return (
+    <div className="cd-overlay" onClick={onClose}>
+      <div className="island cd-card" onClick={(e) => e.stopPropagation()}>
+        <div className="cd-head">
+          <div><div className="cd-title">Majors &amp; Minors</div><div className="cd-sub">Switch your major or add a minor — your plan re-checks against the new requirements.</div></div>
+          <button className="cd-close" onClick={onClose}>×</button>
+        </div>
+        <div className="cd-body">
+          <div className="section-h" style={{ margin: "0 0 10px" }}>Major</div>
+          {Object.values(MAJORS).map((m) => (
+            <label key={m.id} className={`mm-row ${majorId === m.id ? "sel" : ""}`}>
+              <input type="radio" name="major" checked={majorId === m.id} onChange={() => onMajor(m.id)} />
+              <div className="mm-info"><b>{m.name}</b><span>{m.school}</span></div>
+            </label>
+          ))}
+          <div className="section-h" style={{ margin: "18px 0 10px" }}>Minors</div>
+          {Object.values(MINORS).map((m) => (
+            <label key={m.id} className={`mm-row ${minorIds.includes(m.id) ? "sel" : ""}`}>
+              <input type="checkbox" checked={minorIds.includes(m.id)} onChange={() => onToggleMinor(m.id)} />
+              <div className="mm-info"><b>{m.name}</b><span>{(m.deltas || []).map(describeDelta).join(" · ")}</span></div>
+            </label>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---- MyPlan handoff modal (production import via bookmarklet) ---------------
+const DARS_URL = "https://myplan.uw.edu/audit/#/degree";
+
 function HandoffModal({ token, onClose, onImported, onDemo }) {
   const [code, setCode] = useState(null);
-  const [status, setStatus] = useState("Generating a secure one-time link…");
   const [paste, setPaste] = useState("");
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
 
+  // pre-fetch a one-time import code (used by both paste and the optional bookmarklet)
   useEffect(() => {
     let alive = true;
-    (async () => {
-      const r = await startImport(token);
-      if (!alive) return;
-      if (r?.code) { setCode(r.code); setStatus("Waiting for your MyPlan import…"); }
-      else setStatus("Couldn't reach the backend. Use demo data or paste below.");
-    })();
+    (async () => { const r = await startImport(token); if (alive) setCode(r?.code || null); })();
     return () => { alive = false; };
   }, [token]);
 
+  // poll only matters for the optional bookmarklet path
   useEffect(() => {
     if (!code) return;
     const iv = setInterval(async () => {
@@ -437,37 +517,48 @@ function HandoffModal({ token, onClose, onImported, onDemo }) {
     return () => clearInterval(iv);
   }, [code, token]);
 
-  const bm = code
-    ? `javascript:(function(){fetch('${API_BASE}/api/import/${code}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({darsText:document.body.innerText})}).then(function(r){return r.json()}).then(function(j){alert('Liquid Planner: imported '+((j.audit&&j.audit.earned)||0)+' credits. Return to the app.')}).catch(function(){alert('Import failed — make sure you are on your DARS audit page.')})})();`
-    : "#";
-
   async function submitPaste() {
-    if (!code || !paste.trim()) return;
-    const r = await importDars(code, paste);
-    if (r?.ok) { const snap = await getSnapshot(token); if (snap) onImported(snap); }
+    if (!paste.trim()) return;
+    setBusy(true); setStatus("Reading your audit…");
+    let c = code;
+    if (!c) { const r = await startImport(token); c = r?.code; setCode(c); }
+    if (!c) { setStatus("Couldn't reach the server. Try again or use sample data."); setBusy(false); return; }
+    const r = await importDars(c, paste);
+    const parsedSomething = r?.ok && ((r.earnedCount + r.inProgressCount) > 0 || r.audit?.earned > 0);
+    if (parsedSomething) {
+      const snap = await getSnapshot(token);
+      if (snap) { onImported(snap); return; }
+    }
+    setStatus("Hmm — that didn't look like a DARS page. Make sure you selected the whole audit (⌘A) and copied it (⌘C).");
+    setBusy(false);
   }
+
+  const bm = code
+    ? `javascript:(function(){fetch('${API_BASE}/api/import/${code}',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({darsText:document.body.innerText})}).then(function(r){return r.json()}).then(function(j){alert('Liquid Planner: imported '+((j.audit&&j.audit.earned)||0)+' credits. Return to the app.')}).catch(function(){alert('Import failed — open your DARS audit first.')})})();`
+    : "#";
 
   return (
     <div className="cd-overlay" onClick={onClose}>
       <div className="island cd-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
         <div className="cd-head">
-          <div><div className="cd-title">Sync from MyPlan</div><div className="cd-sub">Pull your real DARS audit — your NetID never leaves UW.</div></div>
+          <div><div className="cd-title">Sync from MyPlan</div><div className="cd-sub">Copy your DARS audit and paste it — no setup, no extensions.</div></div>
           <button className="cd-close" onClick={onClose}>×</button>
         </div>
         <div className="cd-body">
           <ol className="ho-steps">
-            <li>Drag this button to your bookmarks bar (or copy it):<br />
-              <a className="ho-bm" href={bm} onClick={(e) => e.preventDefault()} draggable>📥 Import to Liquid Planner</a>
-              <button className="ho-copy" onClick={() => { navigator.clipboard?.writeText(bm); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>{copied ? "Copied" : "Copy"}</button>
-            </li>
-            <li>Open <b>myplan.uw.edu/audit</b> and sign in with your UW NetID.</li>
-            <li>Click the bookmarklet on your DARS page. This app picks it up automatically.</li>
+            <li><a className="ho-link" href={DARS_URL} target="_blank" rel="noreferrer">Open your DARS audit ↗</a> (sign in with your UW NetID if asked).</li>
+            <li>On that page, select all (<b>⌘A</b>) and copy (<b>⌘C</b>).</li>
+            <li>Paste it here and import:</li>
           </ol>
-          <div className="ho-status"><span className="spin" /> {status}</div>
-          <details className="ho-paste">
-            <summary>Paste DARS text instead</summary>
-            <textarea value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="Select-all + copy your DARS page, paste here…" />
-            <button className="btn" onClick={submitPaste} disabled={!code || !paste.trim()}>Import pasted audit</button>
+          <textarea className="ho-ta" value={paste} onChange={(e) => setPaste(e.target.value)} placeholder="Paste your DARS audit here…" />
+          <button className="btn ho-import" onClick={submitPaste} disabled={busy || !paste.trim()}>{busy ? "Importing…" : "Import my audit"}</button>
+          {status && <div className="ho-status">{status}</div>}
+
+          <details className="ho-adv">
+            <summary>Advanced: one-click bookmarklet (Chrome/Edge)</summary>
+            <p className="hint" style={{ marginTop: 8 }}>Drag this to your bookmarks bar, then click it while on your DARS page — it imports automatically. (Safari blocks this unless dragged to the bar; the paste method above always works.)</p>
+            <a className="ho-bm" href={bm} onClick={(e) => e.preventDefault()} draggable>📥 Import to Liquid Planner</a>
+            <button className="ho-copy" onClick={() => { navigator.clipboard?.writeText(bm); setCopied(true); setTimeout(() => setCopied(false), 1500); }}>{copied ? "Copied" : "Copy"}</button>
           </details>
           <button className="ho-demo" onClick={onDemo}>Use sample data instead (demo)</button>
         </div>
@@ -497,13 +588,17 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [detailReq, setDetailReq] = useState(null);
   const [showHandoff, setShowHandoff] = useState(false);
+  const [showMajors, setShowMajors] = useState(false);
+  const [majorId, setMajorId] = useState("cs");
+  const [minorIds, setMinorIds] = useState([]);
+  const [courseTerms, setCourseTerms] = useState({});
   const didAutoSync = useRef(false);
 
-  const major = MAJORS.cs;
+  const program = useMemo(() => buildProgram(MAJORS[majorId] || MAJORS.cs, minorIds), [majorId, minorIds]);
   const completedSet = useMemo(() => new Set(completed), [completed]);
   const ipSet = useMemo(() => new Set(inProgress), [inProgress]);
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
-  const planIds = useMemo(() => buildPlanIds(major, completedSet, ipSet, chosenSet), [major, completedSet, ipSet, chosenSet]);
+  const planIds = useMemo(() => buildPlanIds(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
 
   useEffect(() => { apiHealth().then((j) => { setBackendOnline(!!j?.ok); setOidcEnabled(j?.oidc || {}); }); }, []);
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(t); }, []);
@@ -529,16 +624,18 @@ export default function App() {
         if (plan.completed?.length) setCompleted(plan.completed);
         if (plan.inProgress?.length) setInProgress(plan.inProgress);
         if (plan.schedule && Object.keys(plan.schedule).length) setSchedule(plan.schedule);
+        if (plan.majorId && MAJORS[plan.majorId]) setMajorId(plan.majorId);
+        if (Array.isArray(plan.minorIds)) setMinorIds(plan.minorIds);
       }
-      if (snap) setSnapshot(snap);
+      if (snap) { setSnapshot(snap); if (snap.terms) setCourseTerms((t) => ({ ...t, ...snap.terms })); }
       setLoaded(true);
     })();
   }, [token]);
   useEffect(() => {
     if (!token || !loaded) return;
-    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule }), 600);
+    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, minorIds }), 600);
     return () => clearTimeout(t);
-  }, [token, loaded, chosen, completed, inProgress, schedule]);
+  }, [token, loaded, chosen, completed, inProgress, schedule, majorId, minorIds]);
 
   async function handleSignIn(profile) {
     if (backendOnline) { try { const { token: tk, user: u } = await devLogin(profile); setUser(u); setToken(tk); return; } catch { /* local */ } }
@@ -554,6 +651,7 @@ export default function App() {
     setSnapshot(snap);
     setCompleted((p) => [...new Set([...p, ...(snap.earned || [])])]);
     setInProgress((p) => [...new Set([...p, ...(snap.inProgress || [])])]);
+    if (snap.terms) setCourseTerms((t) => ({ ...t, ...snap.terms }));
   }
   async function handleSyncLocal() {
     setSyncing(true);
@@ -569,10 +667,10 @@ export default function App() {
   }
   function autoPlan() {
     // 1) auto-select max-coverage gen-ed / elective courses to fill open requirements
-    const adds = autoSelect(major, completedSet, ipSet, chosenSet);
+    const adds = autoSelect(program, completedSet, ipSet, chosenSet);
     const newChosen = [...new Set([...chosen, ...adds])];
     // 2) schedule the whole plan across quarters
-    const newPlan = buildPlanIds(major, completedSet, ipSet, new Set(newChosen));
+    const newPlan = buildPlanIds(program, completedSet, ipSet, new Set(newChosen));
     setChosen(newChosen);
     setSchedule(scheduleAll(newPlan, completedSet, ipSet));
     setView("plan");
@@ -593,7 +691,7 @@ export default function App() {
     { key: "settings", label: "Settings", icon: I.gear, onClick: () => {} },
     { key: "planview", label: "Plan View", icon: I.cal, onClick: () => setView("plan") },
     { key: "catalog", label: "Catalog", icon: I.search, onClick: () => setView("catalog") },
-    { key: "majors", label: "Majors", icon: I.grad, onClick: () => setView("catalog") },
+    { key: "majors", label: "Majors", icon: I.grad, onClick: () => setShowMajors(true) },
     { key: "add", label: "Add Class", icon: I.plus, onClick: () => setView("catalog") },
     { key: "auto", label: "Auto Plan", icon: I.spark, onClick: autoPlan },
   ];
@@ -632,11 +730,11 @@ export default function App() {
         <div className="layout">
           <div>
             {view === "plan"
-              ? <PlanBoard major={major} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
-              : <Requirements major={major} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
+              ? <PlanBoard program={program} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} courseTerms={courseTerms} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
+              : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
-            <AuditCard major={major} snapshot={snapshot} completedSet={completedSet} onResync={handleSync} syncing={syncing} />
+            <AuditCard program={program} snapshot={snapshot} onResync={handleSync} syncing={syncing} />
             <ThisQuarter ipSet={ipSet} />
             <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
@@ -652,14 +750,20 @@ export default function App() {
         <button onClick={() => setShowPaste((v) => !v)}>{I.pen}<span>Design</span></button>
         <button className="ic-btn" onClick={() => setView("catalog")}>{I.plus}</button>
         <div className="tb-sep" />
-        <button onClick={() => setView("catalog")}>{I.grad}<span>Majors &amp; Minors</span></button>
+        <button onClick={() => setShowMajors(true)}>{I.grad}<span>Majors &amp; Minors</span></button>
         <button className="primary" onClick={autoPlan}>{I.spark}<span>Auto Plan</span></button>
         <button className="ic-btn" onClick={() => setSchedule({})}>{I.undo}</button>
       </div>
 
       {detailReq && (
-        <CategoryDetail req={detailReq} major={major} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
+        <CategoryDetail req={detailReq} major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen} onClose={() => setDetailReq(null)} />
+      )}
+      {showMajors && (
+        <MajorsMinors majorId={majorId} minorIds={minorIds}
+          onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); }}
+          onToggleMinor={(id) => setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])}
+          onClose={() => setShowMajors(false)} />
       )}
       {showHandoff && (
         <HandoffModal token={token}

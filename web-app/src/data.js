@@ -91,6 +91,14 @@ export const COURSES = {
   AES150:  { id: "AES150",  title: "Intro to American Ethnic Studies", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
   GWSS200: { id: "GWSS200", title: "Intro to Gender, Women & Sexuality", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
   CHID101: { id: "CHID101", title: "The Idea of Diversity", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "arts"] },
+
+  // Informatics + Math-minor courses
+  INFO201: { id: "INFO201", title: "Technical Foundations of Informatics", credits: 5, category: "core", prereqs: ["INFO200"] },
+  INFO300: { id: "INFO300", title: "Research Methods", credits: 5, category: "core", prereqs: ["INFO201"] },
+  INFO340: { id: "INFO340", title: "Client-Side Development", credits: 5, category: "core400", prereqs: ["INFO201"] },
+  INFO360: { id: "INFO360", title: "Design Methods", credits: 4, category: "core400", prereqs: ["INFO201"] },
+  MATH307: { id: "MATH307", title: "Introduction to Differential Equations", credits: 3, category: "math", prereqs: ["MATH126"] },
+  MATH324: { id: "MATH324", title: "Advanced Multivariable Calculus", credits: 3, category: "math", prereqs: ["MATH126"] },
 };
 
 // Tag natural-science courses with a gened area for the recommender.
@@ -126,6 +134,50 @@ export const MAJORS = {
         courses: ["CSE401", "CSE421", "CSE451", "CSE461", "CSE446", "CSE455", "CSE403", "CSE414", "CSE333"] },
     ],
   },
+
+  informatics: {
+    id: "informatics",
+    name: "Informatics (B.S.)",
+    school: "The Information School",
+    totalCredits: 180,
+    blurb: "Bachelor of Science in Informatics — information, people, and technology.",
+    requirements: [
+      { id: "engl", label: "English Composition", kind: "info", met: true, note: "Satisfied by ENGL 111." },
+      { id: "writing", label: "Writing (W) — 10 cr", kind: "credits", area: "writing", needCredits: 10, courses: ["ESS101"] },
+      { id: "diversity", label: "Diversity — 5 cr", kind: "credits", area: "diversity", needCredits: 5, courses: ["AES150", "GWSS200", "CHID101"] },
+      { id: "ah", label: "Arts & Humanities — 20 cr", kind: "credits", area: "arts", needCredits: 20,
+        courses: ["AIS170", "CHID120", "CMS297", "COM200", "PHIL100", "PHIL120", "PHIL338", "DRAMA101", "MUSIC120", "MUSIC131", "DRAMA210", "ENGL200", "ARTH201"] },
+      { id: "ssc", label: "Social Sciences — 20 cr", kind: "credits", area: "social", needCredits: 20,
+        courses: ["ECON200", "HSTAA101", "POLS202", "POLS101", "PSYCH101", "SOC110", "ANTH100", "GEOG123", "INFO200"] },
+      { id: "nsc", label: "Natural Sciences — 20 cr", kind: "credits", area: "science", needCredits: 20,
+        courses: ["CHEM142", "CHEM152", "PHYS121", "STAT290"] },
+      { id: "math", label: "Mathematics", kind: "all", courses: ["MATH124", "MATH126"] },
+      { id: "infocore", label: "Informatics Core", kind: "all", courses: ["INFO200", "INFO201", "INFO300"] },
+      { id: "core400", label: "Informatics Electives (choose 4)", kind: "choose", area: "core400", needCount: 4,
+        courses: ["CSE414", "CSE446", "CSE455", "CSE403", "INFO340", "INFO360"] },
+    ],
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Minors. Each delta adjusts the active program's requirements:
+//   { area, addCredits }  -> add credits to the matching credit requirement
+//   { area, addCount }    -> add courses to the matching "choose" requirement
+//   { kind:"all", ... }   -> append a new required-courses block
+// ---------------------------------------------------------------------------
+export const MINORS = {
+  sustainability: {
+    id: "sustainability", name: "Sustainability Minor",
+    deltas: [ { area: "science", addCredits: 5 }, { area: "arts", addCredits: 5 } ],
+  },
+  datascience: {
+    id: "datascience", name: "Data Science Minor",
+    deltas: [ { area: "core400", addCount: 2 }, { area: "social", addCredits: 5 } ],
+  },
+  math: {
+    id: "math", name: "Mathematics Minor",
+    deltas: [ { kind: "all", id: "min-math", label: "Minor: Mathematics", courses: ["MATH307", "MATH324"] } ],
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -149,6 +201,14 @@ export const STUDENT_SNAPSHOT = {
            "CHEM142", "CHEM152", "PHYS121", "STAT290", "ECON200", "HSTAA101", "POLS202",
            "CSE331", "CSE351", "CSE391"],
   inProgress: ["CSE311", "MATH208", "ESS101"],
+  // the quarter each course was taken (UW codes: AU/WI/SP/SU + 2-digit year)
+  terms: {
+    CSE122: "SU24", ENGL111: "AU25", CSE123: "AU25", MATH125: "AU25",
+    CSE121: "SP25", MATH124: "SP25", CHEM142: "SP25", CHEM152: "SP25", PHYS121: "SP25",
+    STAT290: "SP25", ECON200: "SP25", HSTAA101: "SP25", POLS202: "SP25",
+    MATH126: "WI26", CSE331: "WI26", CSE351: "WI26", CSE391: "WI26",
+    CSE311: "SP26", MATH208: "SP26", ESS101: "SP26",
+  },
 };
 
 // Pulls the latest snapshot fresh every call (cache-busted). The snapshot file
@@ -163,6 +223,31 @@ export async function fetchMyPlanSnapshot() {
   } catch (e) {
     return { ...STUDENT_SNAPSHOT, fetchedAt: STUDENT_SNAPSHOT.fetchedAt, _fallback: true };
   }
+}
+
+// Merge selected minors into a major's requirements to form the active program.
+function relabel(r) {
+  if (r.kind === "credits") r.label = r.label.replace(/\d+ cr/, `${r.needCredits} cr`);
+  if (r.kind === "choose") r.label = r.label.replace(/choose \d+/i, `choose ${r.needCount}`);
+}
+export function buildProgram(major, minorIds = []) {
+  const reqs = major.requirements.map((r) => ({ ...r, courses: r.courses ? [...r.courses] : r.courses }));
+  const minors = minorIds.map((id) => MINORS[id]).filter(Boolean);
+  for (const min of minors) {
+    for (const d of min.deltas || []) {
+      if (d.kind === "all") {
+        reqs.push({ id: d.id, label: d.label, kind: "all", courses: [...d.courses], fromMinor: min.id });
+      } else if (d.addCredits != null) {
+        const r = reqs.find((r) => r.area === d.area && r.kind === "credits");
+        if (r) { r.needCredits += d.addCredits; r.fromMinor = (r.fromMinor || []).concat(min.id); relabel(r); }
+      } else if (d.addCount != null) {
+        const r = reqs.find((r) => r.area === d.area && r.kind === "choose");
+        if (r) { r.needCount += d.addCount; r.fromMinor = (r.fromMinor || []).concat(min.id); relabel(r); }
+      }
+    }
+  }
+  const minorLabel = minors.length ? " + " + minors.map((m) => m.name.replace(" Minor", "")).join(" & ") + " minor" : "";
+  return { ...major, requirements: reqs, minorIds: minors.map((m) => m.id), name: major.name + minorLabel };
 }
 
 // Parse pasted unofficial-transcript / DARS text into known course ids.

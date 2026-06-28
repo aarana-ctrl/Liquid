@@ -15,17 +15,19 @@ export function parseDars(text) {
     : { totalRequired: 180, earned: 0, inProgress: 0, needs: 180 };
 
   // Course rows: "AU25 CSE 311 FOUNDATIONS COMP I 4 IP" / "SP25 POL S 202 ... 5 AP"
-  const earned = new Set(), inProgress = new Set();
+  // Capture the quarter code (e.g. SP25) so the planner can place each course
+  // in the quarter it was actually taken.
+  const earned = new Set(), inProgress = new Set(), terms = {};
   const re = /\b([A-Z]{2}\d{2})\s+([A-Z][A-Z&]*(?:\s[A-Z&]+)?)\s+(\d{3})\b([^\n]*)/g;
   let m;
   while ((m = re.exec(t)) !== null) {
+    const qtr = m[1];                            // e.g. "SP25"
     const id = (m[2] + m[3]).replace(/\s+/g, "");
     const rest = m[4] || "";
     if (/\bNS\b/.test(rest) && /\b0\b/.test(rest)) continue; // doesn't count for credit
     if (/\bIP\b/.test(rest)) inProgress.add(id); else earned.add(id);
+    if (!terms[id]) terms[id] = qtr;             // first listed quarter wins
   }
-  // a course can be listed in multiple requirement blocks; in-progress wins isn't
-  // an issue here, but make sure completed ids aren't also marked in-progress.
   for (const id of inProgress) earned.delete(id);
 
   return {
@@ -37,5 +39,6 @@ export function parseDars(text) {
     audit,
     earned: [...earned],
     inProgress: [...inProgress],
+    terms,
   };
 }

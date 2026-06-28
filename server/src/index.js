@@ -85,8 +85,8 @@ app.get("/api/me", auth, async (req, res) => {
 // ---- plan (saved server-side → syncs across devices) -----------------------
 app.get("/api/plan", auth, async (req, res) => res.json(await getPlan(req.user.sub)));
 app.put("/api/plan", auth, async (req, res) => {
-  const { chosen, schedule, completed, inProgress } = req.body || {};
-  res.json(await savePlan(req.user.sub, { chosen, schedule, completed, inProgress }));
+  const { chosen, schedule, completed, inProgress, majorId, minorIds } = req.body || {};
+  res.json(await savePlan(req.user.sub, { chosen, schedule, completed, inProgress, majorId, minorIds }));
 });
 
 // ---- MyPlan snapshot -------------------------------------------------------
@@ -121,7 +121,7 @@ app.post("/api/import/:code", cors({ origin: true }), async (req, res) => {
   const snap = parseDars(text);
   await saveSnapshot(rec.userId, snap);
   importCodes.delete(req.params.code);
-  res.json({ ok: true, audit: snap.audit, program: snap.program });
+  res.json({ ok: true, audit: snap.audit, program: snap.program, earnedCount: snap.earned.length, inProgressCount: snap.inProgress.length });
 });
 
 // 404 + error handler
