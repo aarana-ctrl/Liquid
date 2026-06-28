@@ -25,6 +25,15 @@ This is the only path that needs **no developer mode** for end users.
 
 Then pin the icon, open Liquid Planner and sign in once, and visit your DARS audit — you'll see a "✓ Synced" toast. The popup has a **Sync now** button too.
 
+### Safari
+Safari supports the **same extension code** (it's a standard Web Extension), but Apple requires it to be wrapped in a small macOS app and signed — there's no "load unpacked." One-time conversion on a Mac with Xcode:
+
+```bash
+xcrun safari-web-extension-converter /path/to/Course/extension
+```
+
+This generates an Xcode project. Open it, press **Run** to install the extension into Safari, then enable it in **Safari → Settings → Extensions**. To ship it to other Safari users you sign it with an Apple Developer account ($99/yr) and distribute via the Mac App Store or notarized download. Because of these Apple requirements, Safari can't be as frictionless as the Chrome Web Store — for Safari users the **paste import in the app** remains the no-install fallback.
+
 ## Configure for your deployment
 
 The extension matches the app on `*.vercel.app` and `localhost` out of the box. If you use a **custom domain**, add it to two spots in `extension/manifest.json` (the `content_scripts` matches for the app) and re-zip. The API URL is read automatically from the app, so there's nothing to hardcode.
