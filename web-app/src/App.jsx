@@ -112,7 +112,7 @@ function Sky() {
 
 // ---- assistant orb + radial dial -------------------------------------------
 function AssistantOrb({ open, onToggle, items }) {
-  const N = items.length, start = 200, end = 340, R = 92;
+  const N = items.length, start = 20, end = 160, R = 96; // fan downward (orb sits at top)
   return (
     <div className="orbwrap">
       {open && (
@@ -170,17 +170,18 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
   const cur = currentAbs();
 
   // absolute quarter for a course (completed/in-progress use the real DARS term)
+  const schedAbs = (id) => { const v = schedule[id]; return typeof v === "number" && v > 5000 ? v : null; }; // guard old index-format
   const getAbs = (id) => {
     if (completedSet.has(id)) return parseQ(courseTerms[id]) ?? cur - 1;
     if (ipSet.has(id)) return parseQ(courseTerms[id]) ?? cur;
-    return schedule[id] ?? null;
+    return schedAbs(id);
   };
   const planArr = useMemo(() => [...planIds], [planIds]);
   const remaining = planArr.filter((id) => !completedSet.has(id) && !ipSet.has(id));
-  const pool = remaining.filter((id) => schedule[id] == null);
+  const pool = remaining.filter((id) => schedAbs(id) == null);
 
   // timeline range: from the earliest placed quarter through a future runway
-  const placedAbs = planArr.map(getAbs).filter((a) => a != null);
+  const placedAbs = planArr.map(getAbs).filter((a) => a != null && a > cur - 24 && a < cur + 48);
   const minAbs = placedAbs.length ? Math.min(cur, ...placedAbs) : cur;
   const maxAbs = Math.max(cur + 6, ...(placedAbs.length ? placedAbs : [cur]));
   const quarters = []; for (let a = minAbs; a <= maxAbs; a++) quarters.push(a);
@@ -623,7 +624,10 @@ export default function App() {
         if (plan.chosen?.length) setChosen(plan.chosen);
         if (plan.completed?.length) setCompleted(plan.completed);
         if (plan.inProgress?.length) setInProgress(plan.inProgress);
-        if (plan.schedule && Object.keys(plan.schedule).length) setSchedule(plan.schedule);
+        if (plan.schedule) { // drop stale index-format values from older plans
+          const clean = {}; for (const k in plan.schedule) { const v = plan.schedule[k]; if (typeof v === "number" && v > 5000) clean[k] = v; }
+          if (Object.keys(clean).length) setSchedule(clean);
+        }
         if (plan.majorId && MAJORS[plan.majorId]) setMajorId(plan.majorId);
         if (Array.isArray(plan.minorIds)) setMinorIds(plan.minorIds);
       }
@@ -728,7 +732,7 @@ export default function App() {
         )}
 
         <div className="layout">
-          <div>
+          <div className="plan-col">
             {view === "plan"
               ? <PlanBoard program={program} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} courseTerms={courseTerms} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
@@ -743,7 +747,6 @@ export default function App() {
           </div>
         </div>
 
-        <p className="footnote">Drag courses between quarters · click the orb for the assistant dial · data live from UW MyPlan (DARS) via the browser session, synced through the backend.</p>
       </div>
 
       <div className="toolbar island">
