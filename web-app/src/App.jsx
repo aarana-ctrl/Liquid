@@ -172,20 +172,28 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
 
   // absolute quarter for a course (completed/in-progress use the real DARS term)
   const schedAbs = (id) => { const v = schedule[id]; return typeof v === "number" && v > 5000 ? v : null; }; // guard old index-format
+  // AP / transfer (or term-less) completed credits aren't in a real quarter
+  const isPre = (id) => completedSet.has(id) && (courseTerms[id] === "PRE" || !parseQ(courseTerms[id]));
   const getAbs = (id) => {
-    if (completedSet.has(id)) return parseQ(courseTerms[id]) ?? cur - 1;
+    if (isPre(id)) return null;
+    if (completedSet.has(id)) return parseQ(courseTerms[id]);
     if (ipSet.has(id)) return parseQ(courseTerms[id]) ?? cur;
     return schedAbs(id);
   };
   const planArr = useMemo(() => [...planIds], [planIds]);
+  const preCourses = planArr.filter(isPre);
   const remaining = planArr.filter((id) => !completedSet.has(id) && !ipSet.has(id));
   const pool = remaining.filter((id) => schedAbs(id) == null);
 
-  // timeline range: from the earliest placed quarter through a future runway
+  // visible quarters: any quarter with courses + the current one + a future
+  // non-summer runway. Empty PAST quarters are hidden; future summers show only
+  // if they hold a course.
   const placedAbs = planArr.map(getAbs).filter((a) => a != null && a > cur - 24 && a < cur + 48);
-  const minAbs = placedAbs.length ? Math.min(cur, ...placedAbs) : cur;
   const maxAbs = Math.max(cur + 6, ...(placedAbs.length ? placedAbs : [cur]));
-  const quarters = []; for (let a = minAbs; a <= maxAbs; a++) quarters.push(a);
+  const content = new Set(placedAbs);
+  const visibleSet = new Set(content); visibleSet.add(cur);
+  for (let a = cur; a <= maxAbs; a++) { const q = absToQ(a); if (q.term !== "SU") visibleSet.add(a); else if (content.has(a)) visibleSet.add(a); }
+  const quarters = [...visibleSet].sort((x, y) => x - y);
 
   const contentOf = (abs) => planArr.filter((id) => getAbs(id) === abs)
     .sort((x, y) => (completedSet.has(y) - completedSet.has(x)) || (ipSet.has(y) - ipSet.has(x)));
@@ -207,8 +215,10 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
   // Connectors live INSIDE the scroll content (in content coordinates) so they
   // move with the cards — no recompute on scroll, no "random" redraw. We only
   // draw prerequisite → course links left-to-right (prereq in an earlier column).
+  const SHOW_CONNECTORS = false; // hidden for now — declutters the timeline
   const [svgSize, setSvgSize] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
+    if (!SHOW_CONNECTORS) { setEdges([]); return; }
     function compute() {
       const cols = colsRef.current; if (!cols) { setEdges([]); return; }
       const cr = cols.getBoundingClientRect();
@@ -275,15 +285,25 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
 
       <div className="board">
         <div className="cols" ref={colsRef}>
-          <svg className="connectors" width={svgSize.w} height={svgSize.h} style={{ width: svgSize.w, height: svgSize.h }}>
-            {edges.map((e) => { const mx = (e.x1 + e.x2) / 2;
-              return <path key={e.key} className="conn" pathLength="1"
-                d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`}
-                fill="none" stroke="url(#connGrad)" strokeWidth="1.6" />; })}
-            <defs><linearGradient id="connGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="rgba(95,208,168,0.7)" /><stop offset="1" stopColor="rgba(139,123,240,0.7)" />
-            </linearGradient></defs>
-          </svg>
+          {SHOW_CONNECTORS && (
+            <svg className="connectors" width={svgSize.w} height={svgSize.h} style={{ width: svgSize.w, height: svgSize.h }}>
+              {edges.map((e) => { const mx = (e.x1 + e.x2) / 2;
+                return <path key={e.key} className="conn" pathLength="1"
+                  d={`M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`}
+                  fill="none" stroke="url(#connGrad)" strokeWidth="1.6" />; })}
+              <defs><linearGradient id="connGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stopColor="rgba(95,208,168,0.7)" /><stop offset="1" stopColor="rgba(139,123,240,0.7)" />
+              </linearGradient></defs>
+            </svg>
+          )}
+          {preCourses.length > 0 && (
+            <div className="qcol qcol-pre">
+              <div className="qcol-head"><h4>Pre-credits</h4><span className="cr">{preCourses.reduce((s, id) => s + COURSES[id].credits, 0)} cr</span></div>
+              <div className="qcol-tag">AP / Transfer</div>
+              <div className="qcol-line" />
+              {preCourses.map((id) => card(id))}
+            </div>
+          )}
           {quarters.map((abs) => {
             const isCur = abs === cur, isPast = abs < cur;
             const tag = isCur ? "This quarter" : isPast ? "Completed" : "Upcoming";

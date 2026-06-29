@@ -26,7 +26,8 @@ export function parseDars(text) {
     const rest = m[4] || "";
     if (/\bNS\b/.test(rest) && /\b0\b/.test(rest)) continue; // doesn't count for credit
     if (/\bIP\b/.test(rest)) inProgress.add(id); else earned.add(id);
-    if (!terms[id]) terms[id] = qtr;             // first listed quarter wins
+    // AP / transfer credits aren't tied to a real quarter -> "PRE" (pre-matriculation)
+    if (!terms[id]) terms[id] = /\b(AP|TRANSFER|RUNNING|CIHS)\b/.test(rest) ? "PRE" : qtr;
   }
   for (const id of inProgress) earned.delete(id);
 
