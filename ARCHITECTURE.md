@@ -83,6 +83,22 @@ Course/
 └── ARCHITECTURE.md / INTEGRATION.md / AUTH.md / web-app/HOSTING.md
 ```
 
+## Importing DARS per platform (the "how do we read MyPlan" question)
+
+A website can never read another site's logged-in pages (browser same-origin security), and UW has no API. So import is **static and on-demand** — the student signs in, we pull once, and it only refreshes when they hit Re-sync. The right mechanism differs by client:
+
+- **iOS / SwiftUI app — the clean automatic path (no extension needed).** The app opens `myplan.uw.edu/audit` inside its **own `WKWebView`**. The student signs in with NetID + 2FA *in that web view*. Because the app owns the web view, it may call `evaluateJavaScript` to read `document.body.innerText` of the page it loaded — this is allowed (it's the app's own content, not a cross-origin website reading another). The app then POSTs that text to `/api/import/dars`. This is exactly how native apps integrate with sites that lack APIs, and it needs no browser extension. Sketch:
+  ```swift
+  // after the user signs in and the audit page finishes loading:
+  webView.evaluateJavaScript("document.body.innerText") { result, _ in
+      if let text = result as? String { api.importDars(text) }  // POST /api/import/dars (Bearer JWT)
+  }
+  ```
+- **Safari / desktop web — easiest is paste; extension needs Xcode.** A Safari *web app* can't scrape MyPlan, so the no-install path is the in-app **paste** (open DARS → ⌘A ⌘C → paste). A Safari *extension* would automate it but Apple requires wrapping it in a signed app via Xcode — not frictionless. So for Safari we lead with paste.
+- **Chrome / Edge / Brave / Opera — the extension** (in `extension/`) makes it fully automatic after a one-time install.
+
+The backend (`/api/import/dars`, `/api/import/:code`, paste) accepts the DARS text from any of these and parses it identically, so all clients converge on one snapshot.
+
 ## Honest status
 
 - Backend is real and verified locally (login → JWT → save/load plan → ingest/read snapshot → second device reads the same data).

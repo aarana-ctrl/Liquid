@@ -178,7 +178,78 @@ export const MINORS = {
     id: "math", name: "Mathematics Minor",
     deltas: [ { kind: "all", id: "min-math", label: "Minor: Mathematics", courses: ["MATH307", "MATH324"] } ],
   },
+  // Broader UW minor list (department requirements resolve from DARS on import).
+  amath: { id: "amath", name: "Applied Mathematics Minor" },
+  stats: { id: "stats", name: "Statistics Minor", deltas: [ { area: "science", addCredits: 5 } ] },
+  astrobio: { id: "astrobio", name: "Astrobiology Minor" },
+  econ: { id: "econ", name: "Economics Minor", deltas: [ { area: "social", addCredits: 10 } ] },
+  psych: { id: "psych", name: "Psychology Minor", deltas: [ { area: "social", addCredits: 10 } ] },
+  philosophy: { id: "philosophy", name: "Philosophy Minor", deltas: [ { area: "arts", addCredits: 10 } ] },
+  english: { id: "english", name: "English Minor", deltas: [ { area: "arts", addCredits: 10 } ] },
+  history: { id: "history", name: "History Minor", deltas: [ { area: "arts", addCredits: 10 } ] },
+  music: { id: "music", name: "Music Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
+  physics: { id: "physics", name: "Physics Minor", deltas: [ { area: "science", addCredits: 10 } ] },
+  chem: { id: "chem", name: "Chemistry Minor", deltas: [ { area: "science", addCredits: 10 } ] },
+  biology: { id: "biology", name: "Biology Minor", deltas: [ { area: "science", addCredits: 10 } ] },
+  geog: { id: "geog", name: "Geography Minor", deltas: [ { area: "social", addCredits: 5 } ] },
+  pols: { id: "pols", name: "Political Science Minor", deltas: [ { area: "social", addCredits: 10 } ] },
+  comm: { id: "comm", name: "Communication Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
+  hcde: { id: "hcde", name: "Human Centered Design & Eng. Minor" },
+  entre: { id: "entre", name: "Entrepreneurship Minor" },
+  diversity: { id: "diversity", name: "Diversity Minor", deltas: [ { area: "diversity", addCredits: 10 } ] },
+  global: { id: "global", name: "Global Health Minor" },
+  spanish: { id: "spanish", name: "Spanish Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
 };
+
+// ---------------------------------------------------------------------------
+// Full program catalog for the picker. Majors with detailed requirements live
+// in MAJORS above; the rest resolve to a general template (Areas of Inquiry +
+// a department-major bucket whose exact courses come from the student's DARS).
+// ---------------------------------------------------------------------------
+export const MAJOR_CATALOG = [
+  { id: "cs", name: "Computer Science (B.S.)", school: "Allen School of CSE" },
+  { id: "informatics", name: "Informatics (B.S.)", school: "The Information School" },
+  { id: "ce", name: "Computer Engineering (B.S.)", school: "Allen School of CSE" },
+  { id: "ee", name: "Electrical & Computer Engineering (B.S.)", school: "ECE" },
+  { id: "math", name: "Mathematics (B.S.)", school: "College of Arts & Sciences" },
+  { id: "acms", name: "Applied & Computational Math Sciences (B.S.)", school: "Arts & Sciences" },
+  { id: "stat", name: "Statistics (B.S.)", school: "Arts & Sciences" },
+  { id: "datasci", name: "Data Science (B.S.)", school: "Interdisciplinary" },
+  { id: "bioe", name: "Bioengineering (B.S.)", school: "College of Engineering" },
+  { id: "me", name: "Mechanical Engineering (B.S.)", school: "College of Engineering" },
+  { id: "cee", name: "Civil & Environmental Engineering (B.S.)", school: "Engineering" },
+  { id: "cheme", name: "Chemical Engineering (B.S.)", school: "Engineering" },
+  { id: "ise", name: "Industrial & Systems Engineering (B.S.)", school: "Engineering" },
+  { id: "aa", name: "Aeronautics & Astronautics (B.S.)", school: "Engineering" },
+  { id: "mse", name: "Materials Science & Engineering (B.S.)", school: "Engineering" },
+  { id: "biochem", name: "Biochemistry (B.S.)", school: "Arts & Sciences" },
+  { id: "biology", name: "Biology (B.S.)", school: "Arts & Sciences" },
+  { id: "chemistry", name: "Chemistry (B.S.)", school: "Arts & Sciences" },
+  { id: "physics", name: "Physics (B.S.)", school: "Arts & Sciences" },
+  { id: "astronomy", name: "Astronomy (B.S.)", school: "Arts & Sciences" },
+  { id: "ess", name: "Earth & Space Sciences (B.S.)", school: "Arts & Sciences" },
+  { id: "envsci", name: "Environmental Science & Resource Mgmt (B.S.)", school: "Environment" },
+  { id: "psychology", name: "Psychology (B.S.)", school: "Arts & Sciences" },
+  { id: "economics", name: "Economics (B.A.)", school: "Arts & Sciences" },
+  { id: "business", name: "Business Administration (B.A.)", school: "Foster School" },
+  { id: "communication", name: "Communication (B.A.)", school: "Arts & Sciences" },
+  { id: "english", name: "English (B.A.)", school: "Arts & Sciences" },
+  { id: "history", name: "History (B.A.)", school: "Arts & Sciences" },
+  { id: "philosophy", name: "Philosophy (B.A.)", school: "Arts & Sciences" },
+  { id: "politicalsci", name: "Political Science (B.A.)", school: "Arts & Sciences" },
+  { id: "sociology", name: "Sociology (B.A.)", school: "Arts & Sciences" },
+  { id: "anthropology", name: "Anthropology (B.A.)", school: "Arts & Sciences" },
+  { id: "geography", name: "Geography (B.A.)", school: "Arts & Sciences" },
+  { id: "intlstudies", name: "International Studies (B.A.)", school: "Jackson School" },
+  { id: "linguistics", name: "Linguistics (B.A.)", school: "Arts & Sciences" },
+  { id: "arthistory", name: "Art History (B.A.)", school: "Arts & Sciences" },
+  { id: "drama", name: "Drama (B.A.)", school: "Arts & Sciences" },
+  { id: "music", name: "Music (B.A.)", school: "Arts & Sciences" },
+  { id: "architecture", name: "Architecture (B.A.)", school: "Built Environments" },
+  { id: "publichealth", name: "Public Health (B.A.)", school: "School of Public Health" },
+  { id: "nursing", name: "Nursing (B.S.N.)", school: "School of Nursing" },
+  { id: "kinesiology", name: "Kinesiology (B.S.)", school: "Public Health" },
+];
 
 // ---------------------------------------------------------------------------
 // Live MyPlan snapshot for the signed-in student (pulled from DARS).
@@ -226,6 +297,32 @@ export async function fetchMyPlanSnapshot() {
   }
 }
 
+// Shared gen-ed pools, reused by the generic-major template.
+const AH_POOL = ["AIS170", "CHID120", "CMS297", "COM200", "PHIL100", "PHIL120", "PHIL338", "DRAMA101", "MUSIC120", "MUSIC131", "DRAMA210", "ENGL200", "ARTH201"];
+const SSC_POOL = ["ECON200", "HSTAA101", "POLS202", "POLS101", "PSYCH101", "SOC110", "ANTH100", "GEOG123", "INFO200"];
+const NSC_POOL = ["CHEM142", "CHEM152", "PHYS121", "STAT290", "ENVIR239", "BIOL106", "ESS101"];
+
+// A general degree template for majors without hand-authored requirements.
+export function genericProgram(entry) {
+  return {
+    id: entry.id, name: entry.name, school: entry.school, totalCredits: 180,
+    requirements: [
+      { id: "engl", label: "English Composition", kind: "info", note: "One English composition course (5 cr)." },
+      { id: "writing", label: "Writing (W) — 10 cr", kind: "credits", area: "writing", needCredits: 10, courses: ["ESS101", "ENVIR239"] },
+      { id: "diversity", label: "Diversity — 5 cr", kind: "credits", area: "diversity", needCredits: 5, courses: ["AES150", "GWSS200", "CHID101"] },
+      { id: "ah", label: "Arts & Humanities — 20 cr", kind: "credits", area: "arts", needCredits: 20, courses: AH_POOL },
+      { id: "ssc", label: "Social Sciences — 20 cr", kind: "credits", area: "social", needCredits: 20, courses: SSC_POOL },
+      { id: "nsc", label: "Natural Sciences — 20 cr", kind: "credits", area: "science", needCredits: 20, courses: NSC_POOL },
+      { id: "major", label: `${entry.name.replace(/\s*\(B\.[A-Z.]+\)/, "")} — major courses`, kind: "info", note: "Department-specific requirements load from your DARS audit when you sync." },
+    ],
+  };
+}
+export function resolveProgram(majorId) {
+  if (MAJORS[majorId]) return MAJORS[majorId];
+  const entry = MAJOR_CATALOG.find((m) => m.id === majorId);
+  return entry ? genericProgram(entry) : MAJORS.cs;
+}
+
 // Merge selected minors into a major's requirements to form the active program.
 function relabel(r) {
   if (r.kind === "credits") r.label = r.label.replace(/\d+ cr/, `${r.needCredits} cr`);
@@ -235,6 +332,10 @@ export function buildProgram(major, minorIds = []) {
   const reqs = major.requirements.map((r) => ({ ...r, courses: r.courses ? [...r.courses] : r.courses }));
   const minors = minorIds.map((id) => MINORS[id]).filter(Boolean);
   for (const min of minors) {
+    if (!min.deltas || !min.deltas.length) {
+      reqs.push({ id: `min-${min.id}`, label: `Minor: ${min.name.replace(" Minor", "")}`, kind: "info", note: "Minor requirements resolve from your DARS audit." });
+      continue;
+    }
     for (const d of min.deltas || []) {
       if (d.kind === "all") {
         reqs.push({ id: d.id, label: d.label, kind: "all", courses: [...d.courses], fromMinor: min.id });

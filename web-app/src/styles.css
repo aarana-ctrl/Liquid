@@ -5,34 +5,36 @@
    =========================================================================== */
 
 :root {
-  --bg-0: #04050d;
-  --bg-1: #0a0e22;
-  --bg-2: #161d44;
-  --mtn-1: #1b2350;
-  --mtn-2: #232c63;
+  --bg-0: #eef1f7;
+  --bg-1: #ffffff;
+  --bg-2: #e7ebf3;
 
-  --glass: rgba(255, 255, 255, 0.055);
-  --glass-2: rgba(255, 255, 255, 0.085);
-  --glass-brd: rgba(255, 255, 255, 0.14);
-  --glass-hi: rgba(255, 255, 255, 0.22);
-  --shadow: rgba(0, 0, 0, 0.45);
+  --glass: #ffffff;
+  --glass-2: #f5f7fb;
+  --glass-brd: rgba(22, 34, 64, 0.10);
+  --glass-hi: rgba(255, 255, 255, 0.9);
+  --shadow: rgba(30, 42, 84, 0.12);
+  --track: rgba(22, 34, 64, 0.09);
+  --field: #f4f6fb;
 
-  --text: #eef0fb;
-  --text-dim: #9aa2c6;
-  --text-faint: #6b73a0;
+  --text: #1a2233;
+  --text-dim: #5c6678;
+  --text-faint: #98a1b3;
+  --edge: rgba(120, 130, 160, 0.4);
 
-  --accent: #8b7bf0;
-  --accent-2: #6aa8ff;
-  --enrolled: #5fd0a8;   /* in progress */
-  --planned: #6aa8ff;    /* planned/available */
-  --projected: #b59cf0;  /* later */
-  --locked: #6b7196;
+  --accent: #6b5ce0;
+  --accent-2: #3b82f6;
+  --enrolled: #15a37a;   /* completed / in progress accent */
+  --ip: #c98a16;
+  --planned: #3b82f6;
+  --projected: #8b7bf0;
+  --locked: #aab2c2;
 
-  --cat-intro: #f0b54e; --cat-math: #5fb0ff; --cat-core: #9b86ff;
-  --cat-core400: #e06ad0; --cat-science: #4fd6b0; --cat-arts: #ff9a6b;
-  --cat-social: #e0c860; --cat-english: #8aa0c0; --cat-diversity: #ff7ba8;
+  --cat-intro: #e09a14; --cat-math: #2f7fe0; --cat-core: #7a5cf0;
+  --cat-core400: #d24fb0; --cat-science: #15a37a; --cat-arts: #e0683a;
+  --cat-social: #c79a14; --cat-english: #6a7790; --cat-diversity: #e0568f;
 
-  --radius: 22px;
+  --radius: 20px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }
 
@@ -41,22 +43,13 @@
 html, body { height: 100%; }
 body {
   margin: 0; color: var(--text);
-  background:
-    radial-gradient(120% 90% at 50% -10%, #0b1130 0%, var(--bg-0) 55%),
-    linear-gradient(180deg, var(--bg-0) 0%, var(--bg-1) 60%, var(--bg-2) 100%);
-  background-attachment: fixed;
+  background: var(--bg-0);
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
-/* ---- background photo (Lake Tahoe dusk) ---- */
-.bg-photo { position: fixed; inset: 0; z-index: 0; background-size: cover; background-position: center; }
-.bg-photo::after { content: ""; position: absolute; inset: 0;
-  background: linear-gradient(180deg, rgba(6,10,26,0.42) 0%, rgba(6,10,26,0.55) 50%, rgba(6,10,26,0.74) 100%); }
-/* legacy starfield (unused) */
-.sky { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
-.star { position: absolute; border-radius: 50%; background: #fff; }
-.mtns { position: fixed; left: 0; right: 0; bottom: 0; z-index: 0; pointer-events: none; }
+/* background photo removed — clean white theme */
+.bg-photo, .sky, .mtns, .star { display: none !important; }
 
 .app, .login-wrap { position: relative; z-index: 1; }
 
@@ -65,9 +58,7 @@ body {
   background: var(--glass);
   border: 1px solid var(--glass-brd);
   border-radius: var(--radius);
-  box-shadow: 0 24px 60px -28px var(--shadow), inset 0 1px 0 var(--glass-hi);
-  backdrop-filter: blur(26px) saturate(140%);
-  -webkit-backdrop-filter: blur(26px) saturate(140%);
+  box-shadow: 0 10px 30px -18px var(--shadow);
 }
 
 /* left gutter holds the dock (26px in); right gutter mirrors it (26px in);
@@ -163,6 +154,7 @@ body {
 .mm-info { display: flex; flex-direction: column; }
 .mm-info b { font-size: 13.5px; }
 .mm-info span { font-size: 11.5px; color: var(--text-dim); }
+.mm-count { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--glass-2); border: 1px solid var(--glass-brd); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
 
 .audit-link { display: block; text-align: center; margin-top: 8px; font-size: 11.5px; color: var(--accent-2); text-decoration: none; }
 .audit-link:hover { text-decoration: underline; }
@@ -207,7 +199,7 @@ body {
 .bar-row { margin-top: 14px; }
 .bar-row .bl { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; }
 .bar-row .bl b { color: var(--text); }
-.bar { height: 7px; border-radius: 7px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.bar { height: 7px; border-radius: 7px; background: var(--track); overflow: hidden; }
 .bar > div { height: 100%; border-radius: 7px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 .bar.green > div { background: linear-gradient(90deg, var(--enrolled), var(--accent-2)); }
 .card-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--glass-brd); font-size: 13px; }
@@ -242,7 +234,7 @@ body {
 .rb-title { font-size: 15px; font-weight: 700; } .rb-title .met { font-size: 11px; color: var(--enrolled); margin-left: 6px; }
 .rb-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
 .rb-count { font-size: 14px; font-weight: 700; color: var(--accent-2); white-space: nowrap; }
-.rb-bar { height: 7px; border-radius: 7px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 10px 0 12px; }
+.rb-bar { height: 7px; border-radius: 7px; background: var(--track); overflow: hidden; margin: 10px 0 12px; }
 .rb-fill { height: 100%; border-radius: 7px; }
 .rb-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 4px 8px; border-radius: 999px; font-size: 12px; background: var(--glass-2); border: 1px solid var(--glass-brd); }
@@ -280,7 +272,7 @@ body {
 .srv-dot.on { background: var(--enrolled); } .srv-dot.off { background: var(--locked); }
 
 .paste { padding: 16px 18px; margin: 0 56px 18px 56px; }
-.paste textarea { width: 100%; min-height: 90px; resize: vertical; margin: 8px 0 10px; border-radius: 12px; border: 1px solid var(--glass-brd); background: rgba(255,255,255,0.05); padding: 10px 12px; font-size: 13px; color: var(--text); outline: none; }
+.paste textarea { width: 100%; min-height: 90px; resize: vertical; margin: 8px 0 10px; border-radius: 12px; border: 1px solid var(--glass-brd); background: var(--field); padding: 10px 12px; font-size: 13px; color: var(--text); outline: none; }
 .btn { cursor: pointer; border: none; border-radius: 12px; padding: 10px 16px; font-size: 13.5px; font-weight: 600; color: #fff; background: linear-gradient(140deg, #8b7bf0, #6aa8ff); }
 
 /* ---- category detail modal ---- */
@@ -319,13 +311,13 @@ body {
 @keyframes sp { to { transform: rotate(360deg); } }
 .ho-link { color: var(--accent-2); font-weight: 600; text-decoration: none; }
 .ho-link:hover { text-decoration: underline; }
-.ho-ta { width: 100%; min-height: 120px; border-radius: 12px; border: 1px solid var(--glass-brd); background: rgba(255,255,255,0.05); color: var(--text); padding: 10px 12px; font-size: 12px; outline: none; resize: vertical; }
+.ho-ta { width: 100%; min-height: 120px; border-radius: 12px; border: 1px solid var(--glass-brd); background: var(--field); color: var(--text); padding: 10px 12px; font-size: 12px; outline: none; resize: vertical; }
 .ho-import { width: 100%; margin-top: 10px; }
 .ho-adv { margin-top: 16px; font-size: 12.5px; color: var(--text-dim); }
 .ho-adv summary { cursor: pointer; }
 .ho-paste { font-size: 12.5px; color: var(--text-dim); }
 .ho-paste summary { cursor: pointer; margin-bottom: 8px; }
-.ho-paste textarea { width: 100%; min-height: 80px; border-radius: 12px; border: 1px solid var(--glass-brd); background: rgba(255,255,255,0.05); color: var(--text); padding: 9px 11px; font-size: 12px; margin-bottom: 8px; outline: none; }
+.ho-paste textarea { width: 100%; min-height: 80px; border-radius: 12px; border: 1px solid var(--glass-brd); background: var(--field); color: var(--text); padding: 9px 11px; font-size: 12px; margin-bottom: 8px; outline: none; }
 .ho-demo { margin-top: 14px; width: 100%; border: 1px dashed var(--glass-brd); background: transparent; color: var(--text-dim); border-radius: 10px; padding: 8px; font-size: 12px; cursor: pointer; }
 .ho-demo:hover { color: var(--text); }
 
