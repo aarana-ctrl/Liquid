@@ -81,6 +81,65 @@ export function recommend({ area, remainingMap, taken, planned, satisfied }) {
     .sort((a, b) => b.score - a.score);
 }
 
+// Global ranking across ALL open requirements (gen-ed + core) for the Add picker.
+// Required core courses rank highest, then breadth of still-needed coverage.
+export function recommendGlobal(program, completedSet, ipSet, chosenSet) {
+  const taken = new Set([...completedSet, ...ipSet]);
+  const remMap = computeRemaining(program, completedSet, ipSet, chosenSet);
+  const requiredIds = new Set();
+  const cands = new Set();
+  for (const r of program.requirements) {
+    if (r.kind === "all") r.courses.forEach((id) => { if (!taken.has(id)) { cands.add(id); requiredIds.add(id); } });
+    if (r.area && (remMap[r.area]?.remaining ?? 0) > 0) poolForArea(r.area).forEach((c) => { if (!taken.has(c.id)) cands.add(c.id); });
+  }
+  return [...cands].map((id) => {
+    const c = COURSES[id];
+    const areas = c.gened || [c.category];
+    const coveredNeeded = areas.filter((a) => (remMap[a]?.remaining ?? 0) > 0);
+    let score = 0; const reasons = [];
+    if (requiredIds.has(id)) { score += 40; reasons.push("Required for your major"); }
+    if (coveredNeeded.length) {
+      score += 18 + 26 * (coveredNeeded.length - 1);
+      reasons.push(`Covers ${coveredNeeded.length} requirement${coveredNeeded.length > 1 ? "s" : ""} — ${coveredNeeded.map((a) => AREA_LABEL[a] || a).join(", ")}`);
+    }
+    if (c.csRelevant) { score += 15; reasons.push(c.relevanceNote || "Relevant to your major"); }
+    if ((c.prereqs || []).length === 0) score += 2;
+    if (chosenSet.has(id)) { score -= 40; reasons.unshift("Already in your plan"); }
+    return { id, score, reasons, covers: coveredNeeded.length, required: requiredIds.has(id), areas };
+  }).sort((a, b) => b.score - a.score);
+}
+
+// Degree progress that does NOT over-count credits past a category's requirement.
+// Each requirement contributes at most its needed credits; leftover earned credits
+// count only up to the free-elective allowance (180 − sum of requirement needs).
+export function degreeProgress(program, completedSet, ipSet) {
+  const taken = new Set([...completedSet, ...ipSet]);
+  let reqNeed = 0, reqHave = 0; const counted = new Set();
+  for (const r of program.requirements) {
+    if (r.kind === "credits") {
+      const inPool = poolForArea(r.area).filter((c) => taken.has(c.id));
+      reqNeed += r.needCredits;
+      reqHave += Math.min(inPool.reduce((s, c) => s + c.credits, 0), r.needCredits);
+      inPool.forEach((c) => counted.add(c.id));
+    } else if (r.kind === "choose") {
+      const inPool = poolForArea(r.area).filter((c) => taken.has(c.id)).slice(0, r.needCount);
+      reqNeed += r.needCount * 4;
+      reqHave += Math.min(inPool.reduce((s, c) => s + c.credits, 0), r.needCount * 4);
+      inPool.forEach((c) => counted.add(c.id));
+    } else if (r.kind === "all") {
+      reqNeed += r.courses.reduce((s, id) => s + (COURSES[id]?.credits || 0), 0);
+      r.courses.filter((id) => taken.has(id)).forEach((id) => { reqHave += COURSES[id].credits; counted.add(id); });
+    }
+  }
+  const total = program.totalCredits || 180;
+  const electiveAllowance = Math.max(0, total - reqNeed);
+  const allEarned = [...taken].reduce((s, id) => s + (COURSES[id]?.credits || 0), 0);
+  const countedCr = [...counted].reduce((s, id) => s + (COURSES[id]?.credits || 0), 0);
+  const electiveApplied = Math.min(Math.max(0, allEarned - countedCr), electiveAllowance);
+  const earned = Math.min(total, Math.round(reqHave + electiveApplied));
+  return { total, earned, pct: Math.round((earned / total) * 100), remaining: total - earned };
+}
+
 // "AI plan": greedily select gen-ed / elective courses that cover the most
 // still-needed requirements, until the degree's open requirements are filled.
 export function autoSelect(major, completedSet, ipSet, chosenSet) {

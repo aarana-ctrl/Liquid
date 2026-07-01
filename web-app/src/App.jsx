@@ -3,7 +3,7 @@ import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, pars
 import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram } from "./data.js";
-import { recommend, poolForArea, computeRemaining, autoSelect } from "./recommend.js";
+import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress } from "./recommend.js";
 import bgUrl from "./bg.jpg";
 
 // ---- quarter calendar (UW: Autumn, Winter, Spring, Summer) ------------------
@@ -175,12 +175,13 @@ function Login({ onSignIn, backendOnline, oidcEnabled }) {
 }
 
 // ---- plan board (central island) -------------------------------------------
-function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerms, schedule, setSchedule, mode, setMode }) {
+function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode }) {
   const boardRef = useRef(null), colsRef = useRef(null), cardRefs = useRef({}), curColRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [dragId, setDragId] = useState(null);
   const [catYear, setCatYear] = useState(snapshot?.catalogYear || "AU 25");
-  const [pickAbs, setPickAbs] = useState(null); // grid "+" → pick a course for this quarter
+  const [pickAbs, setPickAbs] = useState(null); // grid/timeline "+" → pick a course for this quarter
+  const [pickTab, setPickTab] = useState("rec");
   const cur = effectiveCurrentAbs(ipSet, courseTerms);
 
   // absolute quarter for a course (completed/in-progress use the real DARS term)
@@ -368,49 +369,60 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
         )}
       </div>
 
-      {pickAbs != null && (
-        <div className="cd-overlay" onClick={() => setPickAbs(null)}>
-          <div className="island cd-card picker-card" onClick={(e) => e.stopPropagation()}>
-            <div className="cd-head">
-              <div><div className="cd-title">Add a course · {qLabelAbs(pickAbs)}</div><div className="cd-sub">Choose a course — we check prerequisites for this quarter.</div></div>
-              <button className="cd-close" onClick={() => setPickAbs(null)}>×</button>
+      {pickAbs != null && (() => {
+        const fmt = (x) => x.replace(/([A-Z])(\d)/, "$1 $2");
+        const ranked = recommendGlobal(program, completedSet, ipSet, chosenSet || new Set());
+        const list = pickTab === "rec" ? ranked.slice(0, 12) : [...ranked].sort((a, b) => (b.required - a.required) || a.id.localeCompare(b.id));
+        function pickRow(item) {
+          const id = item.id, c = COURSES[id];
+          const missing = (c.prereqs || []).filter((p) => planIds.has(p)).filter((p) => {
+            if (completedSet.has(p) || ipSet.has(p)) return false;
+            const pa = schedAbs(p); return pa == null || pa >= pickAbs;
+          });
+          const ok = missing.length === 0;
+          const here = schedAbs(id) === pickAbs;
+          const badges = (c.gened || [c.category]).map((g) => SHORT_AREA[g] || g);
+          function add() { if (!ok) return; if (!planIds.has(id) && addChosen) addChosen(id); place(id, pickAbs); setPickAbs(null); }
+          return (
+            <div key={id} className={`qp-row ${ok ? "" : "blocked"} ${here ? "here" : ""}`} onClick={add}>
+              <div className="qp-main">
+                <div className="qp-code"><b>{fmt(id)}</b><span>{c.credits} cr</span>{item.required && <span className="qp-req">required</span>}{badges.map((b) => <span key={b} className="qp-badge">{b}</span>)}</div>
+                <div className="qp-ttl">{c.title}</div>
+                {pickTab === "rec" && item.reasons?.[0] && <div className="qp-reason">{item.reasons[0]}</div>}
+                <div className={`qp-status ${ok ? "ok" : "no"}`}>{here ? "Already in this quarter" : ok ? "✓ Prerequisites met — you can take it here" : `Needs ${missing.map(fmt).join(", ")} in an earlier quarter`}</div>
+              </div>
+              <span className="qp-add">{here ? "✓" : ok ? "＋" : "🔒"}</span>
             </div>
-            <div className="cd-body picker-body">
-              {remaining.map((id) => {
-                const c = COURSES[id];
-                const missing = (c.prereqs || []).filter((p) => planIds.has(p)).filter((p) => {
-                  if (completedSet.has(p) || ipSet.has(p)) return false;
-                  const pa = schedAbs(p); return pa == null || pa >= pickAbs;
-                });
-                const ok = missing.length === 0;
-                const here = schedAbs(id) === pickAbs;
-                const fmt = (x) => x.replace(/([A-Z])(\d)/, "$1 $2");
-                return (
-                  <div key={id} className={`qp-row ${ok ? "" : "blocked"} ${here ? "here" : ""}`} onClick={() => { if (ok) { place(id, pickAbs); setPickAbs(null); } }}>
-                    <div className="qp-main">
-                      <div className="qp-code"><b>{fmt(id)}</b><span>{c.credits} cr</span></div>
-                      <div className="qp-ttl">{c.title}</div>
-                      <div className={`qp-status ${ok ? "ok" : "no"}`}>{here ? "Already in this quarter" : ok ? "✓ Prerequisites met — you can take it here" : `Needs ${missing.map(fmt).join(", ")} in an earlier quarter`}</div>
-                    </div>
-                    <span className="qp-add">{here ? "✓" : ok ? "＋" : "🔒"}</span>
-                  </div>
-                );
-              })}
-              {remaining.length === 0 && <div className="rb-empty">Everything's placed — nothing left to add.</div>}
+          );
+        }
+        return (
+          <div className="cd-overlay" onClick={() => setPickAbs(null)}>
+            <div className="island cd-card picker-card" onClick={(e) => e.stopPropagation()}>
+              <div className="cd-head">
+                <div><div className="cd-title">Add a course · {qLabelAbs(pickAbs)}</div><div className="cd-sub">Recommended courses are ranked by coverage &amp; fit; we check prerequisites for this quarter.</div></div>
+                <button className="cd-close" onClick={() => setPickAbs(null)}>×</button>
+              </div>
+              <div className="cd-tabs">
+                <button className={pickTab === "rec" ? "active" : ""} onClick={() => setPickTab("rec")}>★ Recommended</button>
+                <button className={pickTab === "all" ? "active" : ""} onClick={() => setPickTab("all")}>All courses ({ranked.length})</button>
+              </div>
+              <div className="cd-body picker-body">
+                {list.map(pickRow)}
+                {ranked.length === 0 && <div className="rb-empty">All requirements are satisfied — nothing left to add.</div>}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
 
 // ---- side cards ------------------------------------------------------------
 const DARS_AUDIT_URL = "https://myplan.uw.edu/audit/#/degree";
-function AuditCard({ program, snapshot, onResync, syncing }) {
-  const a = snapshot?.audit;
-  const earned = a?.earned ?? 0, total = a?.totalRequired ?? program.totalCredits;
-  const pct = Math.round((earned / total) * 100);
+function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing }) {
+  // capped progress: over-fulfilled categories don't inflate the percentage
+  const { earned, total, pct } = degreeProgress(program, completedSet, ipSet);
   return (
     <div className="island card">
       <div className="eyebrow">Degree Audit {I.grad}</div>
@@ -919,11 +931,11 @@ export default function App() {
         <div className="layout">
           <div className="plan-col">
             {view === "plan"
-              ? <PlanBoard program={program} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} courseTerms={courseTerms} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
+              ? <PlanBoard program={program} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} addChosen={addChosen} courseTerms={courseTerms} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
-            <AuditCard program={program} snapshot={snapshot} onResync={handleSync} syncing={syncing} />
+            <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={handleSync} syncing={syncing} />
             <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />
             <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
@@ -960,7 +972,7 @@ export default function App() {
       )}
       {showDesign && (
         <DesignStudio
-          boardProps={{ program, snapshot, planIds, completedSet, ipSet, courseTerms, schedule, setSchedule, mode, setMode }}
+          boardProps={{ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode }}
           program={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />

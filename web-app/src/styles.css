@@ -410,6 +410,10 @@ body {
 .cd-card.picker-card { max-width: 800px; max-height: 86vh; }
 .picker-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; padding: 20px 22px 26px; }
 .picker-body .qp-row { margin-bottom: 0; padding: 13px 14px; }
+.qp-req { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; padding: 1px 6px; border-radius: 999px; background: rgba(139,123,240,0.22); border: 1px solid rgba(139,123,240,0.4); color: #cfc6ff; }
+.qp-badge { font-size: 9px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--glass-brd); color: var(--text-dim); }
+.qp-reason { font-size: 10.5px; color: var(--accent); margin-top: 4px; }
+.picker-card .cd-tabs { padding: 10px 20px 0; }
 
 /* ---- account modal ---- */
 .acct-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
