@@ -177,6 +177,7 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
   const boardRef = useRef(null), colsRef = useRef(null), cardRefs = useRef({}), curColRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [dragId, setDragId] = useState(null);
+  const [catYear, setCatYear] = useState(snapshot?.catalogYear || "AU 25");
   const cur = effectiveCurrentAbs(ipSet, courseTerms);
 
   // absolute quarter for a course (completed/in-progress use the real DARS term)
@@ -203,6 +204,11 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
   const visibleSet = new Set(content); visibleSet.add(cur);
   for (let a = cur; a <= maxAbs; a++) { const q = absToQ(a); if (q.term !== "SU") visibleSet.add(a); else if (content.has(a)) visibleSet.add(a); }
   const quarters = [...visibleSet].sort((x, y) => x - y);
+
+  // academic-year grouping for the Grid view (Autumn Y … Summer Y+1)
+  const groupYear = (abs) => { const q = absToQ(abs); return q.term === "AU" ? q.year : q.year - 1; };
+  const _ays = new Set(placedAbs.map(groupYear)); _ays.add(groupYear(cur)); _ays.add(groupYear(cur) + 1);
+  const academicYears = [..._ays].sort((a, b) => a - b);
 
   const contentOf = (abs) => planArr.filter((id) => getAbs(id) === abs)
     .sort((x, y) => (completedSet.has(y) - completedSet.has(x)) || (ipSet.has(y) - ipSet.has(x)));
@@ -284,15 +290,42 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
           <div><h3>{UNIVERSITY.name} ▾</h3><span>{program.name}</span></div>
         </div>
         <div className="plan-head-right">
-          <span className="yearsel">{snapshot?.catalogYear || "AU 25"}</span>
+          <select className="yearsel" value={catYear} onChange={(e) => setCatYear(e.target.value)} title="Catalog year">
+            {["AU 22", "AU 23", "AU 24", "AU 25", "AU 26"].map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
           <div className="seg">
-            <button className={mode === "plan" ? "active" : ""} onClick={() => setMode("plan")}>Timeline</button>
+            <button className={mode !== "grid" ? "active" : ""} onClick={() => setMode("plan")}>Timeline</button>
             <button className={mode === "grid" ? "active" : ""} onClick={() => setMode("grid")}>Grid</button>
           </div>
         </div>
       </div>
 
       <div className="board">
+        {mode === "grid" ? (
+          <div className="grid-view">
+            {preCourses.length > 0 && (
+              <div className="grid-pre">
+                <div className="grid-pre-head">Pre-credits · AP / Transfer <span>{preCourses.reduce((s, id) => s + COURSES[id].credits, 0)} cr</span></div>
+                <div className="grid-pre-cards">{preCourses.map((id) => card(id))}</div>
+              </div>
+            )}
+            <div className="grid-thead"><span /><span>Autumn</span><span>Winter</span><span>Spring</span><span>Summer</span></div>
+            {academicYears.map((yr) => (
+              <div className="grid-row" key={yr}>
+                <div className="grid-ylabel">{yr}–{String(yr + 1).slice(2)}</div>
+                {[["AU", yr], ["WI", yr + 1], ["SP", yr + 1], ["SU", yr + 1]].map(([t, y]) => {
+                  const abs = qAbs(t, y); const list = contentOf(abs);
+                  return (
+                    <div key={t} className={`grid-cell ${abs === cur ? "cur" : ""}`} {...drop((id) => place(id, abs))}>
+                      {list.map((id) => card(id))}
+                      {list.length === 0 && <div className="grid-empty">+</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="cols" ref={colsRef}>
           {SHOW_CONNECTORS && (
             <svg className="connectors" width={svgSize.w} height={svgSize.h} style={{ width: svgSize.w, height: svgSize.h }}>
@@ -336,6 +369,7 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
@@ -350,7 +384,7 @@ function AuditCard({ program, snapshot, onResync, syncing }) {
   return (
     <div className="island card">
       <div className="eyebrow">Degree Audit {I.grad}</div>
-      <h3>{(snapshot?.program || program.name)}</h3>
+      <h3>{program.name}</h3>
       <div className="sub">{program.school || "College of Arts & Sciences"}{snapshot ? ` · GPA ${snapshot.gpa}` : ""}</div>
       <div className="bar-row"><div className="bl"><span>Progress</span><b>{pct}%</b></div><div className="bar"><div style={{ width: `${pct}%` }} /></div></div>
       <div className="card-foot">
@@ -534,6 +568,81 @@ function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose }) {
             </label>
           ))}
         </div>
+        <div className="mm-foot">
+          <span className="mm-savenote">Changes apply live and save to your account.</span>
+          <button className="btn" onClick={onClose}>Save &amp; close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- account modal ---------------------------------------------------------
+function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
+  return (
+    <div className="cd-overlay" onClick={onClose}>
+      <div className="island cd-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
+        <div className="cd-head"><div><div className="cd-title">Account</div><div className="cd-sub">Signed in to Liquid Planner</div></div><button className="cd-close" onClick={onClose}>×</button></div>
+        <div className="cd-body">
+          <div className="acct-row"><div className="acct-avatar">{(user.name || "?").slice(0, 1).toUpperCase()}</div><div><b>{user.name}</b><div className="acct-email">{user.email}</div></div></div>
+          <div className="acct-stats">
+            <div><span>Program</span><b>{program.name}</b></div>
+            {snapshot && <div><span>Credits</span><b>{snapshot.audit.earned} / {snapshot.audit.totalRequired}</b></div>}
+            {snapshot && <div><span>GPA</span><b>{snapshot.gpa}</b></div>}
+            <div><span>Last MyPlan sync</span><b>{snapshot?.fetchedAt ? new Date(snapshot.fetchedAt).toLocaleDateString() : "—"}</b></div>
+          </div>
+          <button className="btn" style={{ width: "100%", marginTop: 16 }} onClick={onSignOut}>Sign out</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Design Studio: full-screen immersive path designer --------------------
+function DesignStudio({ program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose }) {
+  const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
+  const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
+  const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
+  const totalRemaining = Object.values(remainingMap).reduce((s, r) => s + (r.kind === "credits" ? r.remaining : 0), 0);
+  return (
+    <div className="design-studio">
+      <div className="ds-aurora"><span className="blob b1" /><span className="blob b2" /><span className="blob b3" /></div>
+      <div className="ds-inner">
+        <div className="ds-topbar">
+          <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · about {totalRemaining} gen-ed credits left to choose</p></div>
+          <div className="ds-actions">
+            <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>
+            <button className="ds-close" onClick={onClose}>Close ✕</button>
+          </div>
+        </div>
+        <div className="ds-grid">
+          {openReqs.map((r) => {
+            const recs = recommend({ area: r.area, remainingMap, taken, planned: chosenSet, satisfied: taken }).slice(0, 4);
+            const rem = remainingMap[r.area];
+            return (
+              <div className="island ds-card" key={r.id}>
+                <div className="ds-card-head"><b>{r.label.replace(/ —.*/, "")}</b><span className="ds-left">{rem.kind === "credits" ? `${rem.remaining} cr left` : `${rem.remaining} to pick`}</span></div>
+                <div className="ds-recs">
+                  {recs.map((rc) => {
+                    const c = COURSES[rc.id]; const on = chosenSet.has(rc.id);
+                    return (
+                      <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>
+                        <div className="ds-rec-main">
+                          <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
+                          <div className="ds-rec-ttl">{c.title}</div>
+                          {rc.reasons && rc.reasons[0] && <div className="ds-reason">{rc.reasons[0]}</div>}
+                        </div>
+                        <span className="ds-add">{on ? "✓" : "＋"}</span>
+                      </div>
+                    );
+                  })}
+                  {recs.length === 0 && <div className="ds-empty">No more qualifying courses listed.</div>}
+                </div>
+              </div>
+            );
+          })}
+          {openReqs.length === 0 && <div className="island ds-done">🎉 Every gen-ed area is on track. Hit <b>Auto-plan everything</b> to lay it across your quarters.</div>}
+        </div>
       </div>
     </div>
   );
@@ -638,6 +747,8 @@ export default function App() {
   const [detailReq, setDetailReq] = useState(null);
   const [showHandoff, setShowHandoff] = useState(false);
   const [showMajors, setShowMajors] = useState(false);
+  const [showDesign, setShowDesign] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [courseTerms, setCourseTerms] = useState({});
@@ -757,7 +868,7 @@ export default function App() {
         <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} title="Plan">{I.home}</button>
         <button className={view === "catalog" ? "active" : ""} onClick={() => setView("catalog")} title="Catalog">{I.search}</button>
         <div className="sep" />
-        <button title="Profile">{I.user}</button>
+        <button className={showAccount ? "active" : ""} onClick={() => setShowAccount(true)} title="Account">{I.user}</button>
       </div>
 
       <div className="app">
@@ -772,14 +883,6 @@ export default function App() {
             <b>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</b><span className="dotsep">•</span><span>Seattle</span>
           </div></div>
         </div>
-
-        {showPaste && (
-          <section className="island paste">
-            <p style={{ fontSize: 12, color: "var(--text-dim)", margin: "0 0 6px" }}>Paste your DARS / transcript text — we detect codes like “CSE 121”.</p>
-            <textarea value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder="CSE 121  4.0  A …" />
-            <button className="btn" onClick={() => { setCompleted((p) => [...new Set([...p, ...parseTranscript(pasteText)])]); setShowPaste(false); setPasteText(""); }}>Import detected courses</button>
-          </section>
-        )}
 
         <div className="layout">
           <div className="plan-col">
@@ -800,12 +903,11 @@ export default function App() {
       </div>
 
       <div className="toolbar island">
-        <button onClick={() => setShowPaste((v) => !v)}>{I.pen}<span>Design</span></button>
-        <button className="ic-btn" onClick={() => setView("catalog")}>{I.plus}</button>
-        <div className="tb-sep" />
+        <button onClick={() => setShowDesign(true)}>{I.pen}<span>Design</span></button>
+        <button onClick={() => setView("catalog")}>{I.plus}<span>Add</span></button>
         <button onClick={() => setShowMajors(true)}>{I.grad}<span>Majors &amp; Minors</span></button>
         <button className="primary" onClick={autoPlan}>{I.spark}<span>Auto Plan</span></button>
-        <button className="ic-btn" onClick={() => setSchedule({})}>{I.undo}</button>
+        <button onClick={() => setSchedule({})}>{I.undo}<span>Reset</span></button>
       </div>
 
       {detailReq && (
@@ -823,6 +925,16 @@ export default function App() {
           onClose={() => setShowHandoff(false)}
           onImported={(snap) => { applySnapshot(snap); setShowHandoff(false); }}
           onDemo={() => { setShowHandoff(false); handleSyncLocal(); }} />
+      )}
+      {showDesign && (
+        <DesignStudio program={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
+          addChosen={addChosen} removeChosen={removeChosen}
+          onAutoPlan={() => { autoPlan(); setShowDesign(false); }} onClose={() => setShowDesign(false)} />
+      )}
+      {showAccount && (
+        <AccountModal user={user} snapshot={snapshot} program={program}
+          onSignOut={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); setShowAccount(false); }}
+          onClose={() => setShowAccount(false)} />
       )}
     </>
   );
