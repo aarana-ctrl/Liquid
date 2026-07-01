@@ -638,8 +638,8 @@ function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
   );
 }
 
-// ---- Design Studio: full-screen immersive path designer --------------------
-function DesignStudio({ program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose }) {
+// ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
+function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
@@ -649,39 +649,41 @@ function DesignStudio({ program, completedSet, ipSet, chosenSet, addChosen, remo
       <div className="ds-aurora"><span className="blob b1" /><span className="blob b2" /><span className="blob b3" /></div>
       <div className="ds-inner">
         <div className="ds-topbar">
-          <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · about {totalRemaining} gen-ed credits left to choose</p></div>
+          <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · drag, drop &amp; add courses across your quarters — {totalRemaining} gen-ed cr left</p></div>
           <div className="ds-actions">
             <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>
             <button className="ds-close" onClick={onClose}>Close ✕</button>
           </div>
         </div>
-        <div className="ds-grid">
-          {openReqs.map((r) => {
-            const recs = recommend({ area: r.area, remainingMap, taken, planned: chosenSet, satisfied: taken }).slice(0, 4);
-            const rem = remainingMap[r.area];
-            return (
-              <div className="island ds-card" key={r.id}>
-                <div className="ds-card-head"><b>{r.label.replace(/ —.*/, "")}</b><span className="ds-left">{rem.kind === "credits" ? `${rem.remaining} cr left` : `${rem.remaining} to pick`}</span></div>
-                <div className="ds-recs">
-                  {recs.map((rc) => {
-                    const c = COURSES[rc.id]; const on = chosenSet.has(rc.id);
-                    return (
-                      <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>
-                        <div className="ds-rec-main">
-                          <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
-                          <div className="ds-rec-ttl">{c.title}</div>
-                          {rc.reasons && rc.reasons[0] && <div className="ds-reason">{rc.reasons[0]}</div>}
+        <div className="ds-work">
+          <div className="ds-board"><PlanBoard {...boardProps} /></div>
+          <aside className="ds-rail island">
+            <div className="ds-rail-h">Add courses <span>{totalRemaining} cr left</span></div>
+            <div className="ds-rail-scroll">
+              {openReqs.map((r) => {
+                const recs = recommend({ area: r.area, remainingMap, taken, planned: chosenSet, satisfied: taken }).slice(0, 3);
+                const rem = remainingMap[r.area];
+                return (
+                  <div className="ds-railcard" key={r.id}>
+                    <div className="ds-card-head"><b>{r.label.replace(/ —.*/, "")}</b><span className="ds-left">{rem.kind === "credits" ? `${rem.remaining} cr` : `${rem.remaining} left`}</span></div>
+                    {recs.map((rc) => {
+                      const c = COURSES[rc.id]; const on = chosenSet.has(rc.id);
+                      return (
+                        <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>
+                          <div className="ds-rec-main">
+                            <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
+                            <div className="ds-rec-ttl">{c.title}</div>
+                          </div>
+                          <span className="ds-add">{on ? "✓" : "＋"}</span>
                         </div>
-                        <span className="ds-add">{on ? "✓" : "＋"}</span>
-                      </div>
-                    );
-                  })}
-                  {recs.length === 0 && <div className="ds-empty">No more qualifying courses listed.</div>}
-                </div>
-              </div>
-            );
-          })}
-          {openReqs.length === 0 && <div className="island ds-done">🎉 Every gen-ed area is on track. Hit <b>Auto-plan everything</b> to lay it across your quarters.</div>}
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {openReqs.length === 0 && <div className="ds-done-sm">🎉 Gen-eds on track. Drag courses in the plan or hit Auto-plan.</div>}
+            </div>
+          </aside>
         </div>
       </div>
     </div>
@@ -904,7 +906,8 @@ export default function App() {
   return (
     <>
       <Sky />
-      <div className="dock island">
+      <div className="dock-hotzone" aria-hidden />
+      <div className={`dock island ${showDesign ? "tucked" : ""}`}>
         <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} title="Plan">{I.home}</button>
         <button className={view === "catalog" ? "active" : ""} onClick={() => setView("catalog")} title="Catalog">{I.search}</button>
         <div className="sep" />
@@ -967,9 +970,11 @@ export default function App() {
           onDemo={() => { setShowHandoff(false); handleSyncLocal(); }} />
       )}
       {showDesign && (
-        <DesignStudio program={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
+        <DesignStudio
+          boardProps={{ program, snapshot, planIds, completedSet, ipSet, courseTerms, schedule, setSchedule, mode, setMode }}
+          program={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen}
-          onAutoPlan={() => { autoPlan(); setShowDesign(false); }} onClose={() => setShowDesign(false)} />
+          onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {showAccount && (
         <AccountModal user={user} snapshot={snapshot} program={program}
