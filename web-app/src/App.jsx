@@ -112,15 +112,12 @@ const I = {
 const GoogleLogo = () => (<svg viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.3-4 6.9-9.9 6.9-17.4z"/><path fill="#FBBC05" d="M10.4 28.3c-.5-1.5-.8-3.1-.8-4.8s.3-3.3.8-4.8l-7.8-6.1C.9 16 0 19.9 0 24s.9 8 2.6 11.4z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.3-5.7c-2 1.4-4.7 2.3-7.9 2.3-6.3 0-11.7-3.7-13.6-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>);
 const AppleLogo = () => (<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M16.37 12.62c.03 3.27 2.86 4.35 2.9 4.37-.02.08-.45 1.55-1.49 3.07-.9 1.31-1.83 2.61-3.3 2.64-1.44.03-1.9-.85-3.55-.85-1.64 0-2.16.82-3.52.88-1.42.05-2.5-1.42-3.41-2.72C.66 19.32-.74 14.46 1.2 11.18c.96-1.63 2.68-2.66 4.54-2.69 1.39-.03 2.7.94 3.55.94.85 0 2.44-1.16 4.11-.99.7.03 2.67.28 3.93 2.13-.1.06-2.35 1.37-2.33 4.09M13.6 5.34c.75-.91 1.26-2.18 1.12-3.44-1.08.04-2.39.72-3.17 1.63-.7.8-1.31 2.09-1.15 3.32 1.21.09 2.44-.61 3.2-1.51"/></svg>);
 
-// ---- background: photo behind, faint drifting color, glass on top ----------
+// ---- background: just the photo behind the glass (no gradient) -------------
 function Sky() {
   return (
     <>
       <div className="bg-photo" style={{ backgroundImage: `url(${bgUrl})` }} aria-hidden />
       <div className="bg-tint" aria-hidden />
-      <div className="canvas" aria-hidden>
-        <span className="blob b1" /><span className="blob b2" /><span className="blob b3" />
-      </div>
     </>
   );
 }
@@ -279,7 +276,7 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
     const c = COURSES[id];
     return (
       <div key={id} ref={(el) => (cardRefs.current[id] = el)} className={`ccard ${cls}`}
-        {...(done || ip ? {} : drag(id))} onClick={() => !done && !ip && unplace(id)} title={done || ip ? "From your transcript" : "Click to unschedule"}>
+        onClick={() => !done && !ip && unplace(id)} title={done || ip ? "From your transcript" : "Click to remove from plan"}>
         <div className="ch"><span className="code">{id.replace(/([A-Z])(\d)/, "$1 $2")}</span><span className="cr">{c.credits}cr</span></div>
         <div className="ttl">{c.title}</div>
         <div className="st"><i />{label}</div>
@@ -322,7 +319,7 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
                 {[["AU", yr], ["WI", yr + 1], ["SP", yr + 1], ["SU", yr + 1]].map(([t, y]) => {
                   const abs = qAbs(t, y); const list = contentOf(abs);
                   return (
-                    <div key={t} className={`grid-cell ${abs === cur ? "cur" : ""}`} {...drop((id) => place(id, abs))}>
+                    <div key={t} className={`grid-cell ${abs === cur ? "cur" : ""}`}>
                       {list.map((id) => card(id))}
                       <button className="grid-add" onClick={() => setPickAbs(abs)} title="Add a course to this quarter">＋ add course</button>
                     </div>
@@ -357,35 +354,28 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
             const tag = isCur ? "This quarter" : isPast ? "Completed" : "Upcoming";
             const list = contentOf(abs);
             return (
-              <div key={abs} ref={isCur ? curColRef : null} className={`qcol ${isCur ? "qcol-cur" : ""}`} {...drop((id) => place(id, abs))}>
+              <div key={abs} ref={isCur ? curColRef : null} className={`qcol ${isCur ? "qcol-cur" : ""}`}>
                 <div className="qcol-head"><h4>{qLabelAbs(abs)}</h4><span className="cr">{creditsOf(abs)} cr</span></div>
                 <div className="qcol-tag">{tag}</div>
                 <div className="qcol-line" />
                 {list.map((id) => card(id))}
-                {list.length === 0 && <div className="empty">{isPast ? "—" : "drop course"}</div>}
+                {!isPast && <button className="qcol-add" onClick={() => setPickAbs(abs)}>＋ add course</button>}
+                {isPast && list.length === 0 && <div className="empty">—</div>}
               </div>
             );
           })}
-          {pool.length > 0 && (
-            <div className="qcol qcol-pool" {...drop(unplace)}>
-              <div className="qcol-head"><h4>Unscheduled</h4><span className="cr">{pool.length}</span></div>
-              <div className="qcol-tag">To place</div>
-              <div className="qcol-line" style={{ background: "linear-gradient(90deg, var(--text-faint), transparent)" }} />
-              {pool.map((id) => card(id))}
-            </div>
-          )}
         </div>
         )}
       </div>
 
       {pickAbs != null && (
         <div className="cd-overlay" onClick={() => setPickAbs(null)}>
-          <div className="island cd-card" onClick={(e) => e.stopPropagation()}>
+          <div className="island cd-card picker-card" onClick={(e) => e.stopPropagation()}>
             <div className="cd-head">
-              <div><div className="cd-title">Add to {qLabelAbs(pickAbs)}</div><div className="cd-sub">Pick a course — we check prerequisites for this quarter.</div></div>
+              <div><div className="cd-title">Add a course · {qLabelAbs(pickAbs)}</div><div className="cd-sub">Choose a course — we check prerequisites for this quarter.</div></div>
               <button className="cd-close" onClick={() => setPickAbs(null)}>×</button>
             </div>
-            <div className="cd-body">
+            <div className="cd-body picker-body">
               {remaining.map((id) => {
                 const c = COURSES[id];
                 const missing = (c.prereqs || []).filter((p) => planIds.has(p)).filter((p) => {
@@ -646,7 +636,6 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
   const totalRemaining = Object.values(remainingMap).reduce((s, r) => s + (r.kind === "credits" ? r.remaining : 0), 0);
   return (
     <div className="design-studio">
-      <div className="ds-aurora"><span className="blob b1" /><span className="blob b2" /><span className="blob b3" /></div>
       <div className="ds-inner">
         <div className="ds-topbar">
           <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · drag, drop &amp; add courses across your quarters — {totalRemaining} gen-ed cr left</p></div>

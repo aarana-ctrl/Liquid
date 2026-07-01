@@ -10,10 +10,10 @@
   --bg-2: #e7ebf3;
 
   /* translucent liquid glass — light bends through from the photo behind */
-  --glass: rgba(255, 255, 255, 0.10);
-  --glass-2: rgba(255, 255, 255, 0.16);
-  --glass-brd: rgba(255, 255, 255, 0.24);
-  --glass-hi: rgba(255, 255, 255, 0.4);
+  --glass: rgba(255, 255, 255, 0.07);
+  --glass-2: rgba(255, 255, 255, 0.12);
+  --glass-brd: rgba(255, 255, 255, 0.30);
+  --glass-hi: rgba(255, 255, 255, 0.55);
   --shadow: rgba(0, 0, 0, 0.45);
   --track: rgba(255, 255, 255, 0.14);
   --field: rgba(255, 255, 255, 0.1);
@@ -80,20 +80,23 @@ body {
   border: 1px solid var(--glass-brd);
   border-radius: var(--radius);
   box-shadow:
-    0 22px 50px -26px var(--shadow),
-    0 2px 8px -4px rgba(30,40,90,0.10),
+    0 22px 55px -28px var(--shadow),
     inset 0 1px 0 var(--glass-hi),
-    inset 0 -8px 20px -12px rgba(255,255,255,0.35);
-  backdrop-filter: blur(32px) saturate(210%);
-  -webkit-backdrop-filter: blur(32px) saturate(210%);
+    inset 0 0 0 1px rgba(255,255,255,0.10),
+    inset 0 -14px 26px -18px rgba(255,255,255,0.30);
+  /* less blur = clearer, more see-through liquid glass (not milky frost) */
+  backdrop-filter: blur(14px) saturate(170%) brightness(1.04);
+  -webkit-backdrop-filter: blur(14px) saturate(170%) brightness(1.04);
   transition: box-shadow 0.35s cubic-bezier(.2,.7,.2,1);
   animation: glassIn 0.45s ease both;
 }
-/* specular sheen — a diagonal light streak across the glass */
+/* specular gloss — bright diagonal light streak + soft rim, like real glass */
 .island::before {
   content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-  background: linear-gradient(130deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.12) 22%, rgba(255,255,255,0) 46%);
-  opacity: 0.75; mix-blend-mode: screen;
+  background:
+    linear-gradient(125deg, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0.10) 18%, rgba(255,255,255,0) 40%),
+    radial-gradient(120% 60% at 50% -10%, rgba(255,255,255,0.22), transparent 60%);
+  opacity: 0.8; mix-blend-mode: screen;
 }
 /* opacity-only so it never clobbers positioning transforms (dock/toolbar) */
 @keyframes glassIn { from { opacity: 0; } to { opacity: 1; } }
@@ -400,6 +403,13 @@ body {
 .qp-add { flex: none; width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; font-size: 14px; font-weight: 700; color: #fff; background: var(--accent); }
 .qp-row.blocked .qp-add { background: var(--locked); }
 .qp-row.here .qp-add { background: var(--enrolled); }
+/* timeline "add course" button */
+.qcol-add { width: 100%; border: 1px dashed var(--glass-brd); background: transparent; color: var(--text-faint); border-radius: 11px; padding: 9px; font-size: 12px; cursor: pointer; margin-top: 4px; transition: background .15s, color .15s, border-color .15s; }
+.qcol-add:hover { background: var(--glass-2); color: var(--accent); border-color: var(--accent); }
+/* big immersive Add picker */
+.cd-card.picker-card { max-width: 800px; max-height: 86vh; }
+.picker-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; padding: 20px 22px 26px; }
+.picker-body .qp-row { margin-bottom: 0; padding: 13px 14px; }
 
 /* ---- account modal ---- */
 .acct-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
