@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "react";
-import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript } from "./data.js";
+import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript, getDesc } from "./data.js";
 import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram } from "./data.js";
@@ -158,7 +158,7 @@ function Login({ onSignIn, backendOnline, oidcEnabled }) {
       <Sky />
       <div className="island login-card">
         <div className="login-logo" />
-        <h1>Liquid Planner</h1>
+        <h1>Liquid</h1>
         <p className="login-sub">Sign in with your UW email to load your degree audit.</p>
         <button className="prov google" disabled={!!busy} onClick={google}><GoogleLogo /><span>{busy === "google" ? "Redirecting…" : "Continue with Google"}</span></button>
         {!realSso && <button className="prov apple" disabled={!!busy} onClick={() => go("apple")}><AppleLogo /><span>{busy === "apple" ? "Signing in…" : "Continue with Apple"}</span></button>}
@@ -369,51 +369,73 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet,
         )}
       </div>
 
-      {pickAbs != null && (() => {
-        const fmt = (x) => x.replace(/([A-Z])(\d)/, "$1 $2");
-        const ranked = recommendGlobal(program, completedSet, ipSet, chosenSet || new Set());
-        const list = pickTab === "rec" ? ranked.slice(0, 12) : [...ranked].sort((a, b) => (b.required - a.required) || a.id.localeCompare(b.id));
-        function pickRow(item) {
-          const id = item.id, c = COURSES[id];
-          const missing = (c.prereqs || []).filter((p) => planIds.has(p)).filter((p) => {
-            if (completedSet.has(p) || ipSet.has(p)) return false;
-            const pa = schedAbs(p); return pa == null || pa >= pickAbs;
-          });
-          const ok = missing.length === 0;
-          const here = schedAbs(id) === pickAbs;
-          const badges = (c.gened || [c.category]).map((g) => SHORT_AREA[g] || g);
-          function add() { if (!ok) return; if (!planIds.has(id) && addChosen) addChosen(id); place(id, pickAbs); setPickAbs(null); }
+      {pickAbs != null && (
+        <CourseBrowser program={program} planIds={planIds} completedSet={completedSet} ipSet={ipSet}
+          chosenSet={chosenSet || new Set()} addChosen={addChosen} courseTerms={courseTerms} schedule={schedule}
+          targetAbs={pickAbs} onPlace={place} onClose={() => setPickAbs(null)} />
+      )}
+    </div>
+  );
+}
+
+// ---- full-screen course catalog (Add a course / View more) -----------------
+function CourseBrowser({ program, planIds, completedSet, ipSet, chosenSet, addChosen, schedule, targetAbs, onPlace, areaFilter, onClose }) {
+  const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
+  const remMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
+  const [openDesc, setOpenDesc] = useState(null);
+  const fmt = (x) => x.replace(/([A-Z])(\d)/, "$1 $2");
+  const schedAbs = (id) => { const v = schedule[id]; return typeof v === "number" && v > 5000 ? v : null; };
+  const missingFor = (id) => targetAbs == null ? [] : (COURSES[id].prereqs || []).filter((p) => {
+    if (completedSet.has(p) || ipSet.has(p)) return false;
+    const pa = schedAbs(p); return pa == null || pa >= targetAbs;
+  });
+  const reqs = program.requirements.filter((r) => r.kind !== "info" && (!areaFilter || areaFilter.includes(r.area) || areaFilter.includes(r.id)));
+  function addCourse(id) {
+    if (targetAbs != null && missingFor(id).length) return;
+    if (!planIds.has(id) && addChosen) addChosen(id);
+    if (targetAbs != null && onPlace) { onPlace(id, targetAbs); onClose(); }
+  }
+  return (
+    <div className="course-browser">
+      <div className="cb-top">
+        <div><div className="ds-eyebrow">Course Catalog</div><h2>{targetAbs != null ? `Add a course · ${qLabelAbs(targetAbs)}` : "Browse courses"}</h2>
+          <p>Ranked by how many requirements each course fills{targetAbs != null ? " · prerequisites checked for this quarter" : ""}. Tap a course for its description.</p></div>
+        <button className="ds-close" onClick={onClose}>Close ✕</button>
+      </div>
+      <div className="cb-scroll">
+        {reqs.map((r) => {
+          const label = r.label.replace(/ —.*/, "");
+          const rem = remMap[r.area];
+          const courses = r.kind === "all"
+            ? r.courses.filter((id) => !taken.has(id)).map((id) => ({ id, reasons: ["Required for your major"], required: true }))
+            : recommend({ area: r.area, remainingMap: remMap, taken, planned: chosenSet, satisfied: taken });
           return (
-            <div key={id} className={`qp-row ${ok ? "" : "blocked"} ${here ? "here" : ""}`} onClick={add}>
-              <div className="qp-main">
-                <div className="qp-code"><b>{fmt(id)}</b><span>{c.credits} cr</span>{item.required && <span className="qp-req">required</span>}{badges.map((b) => <span key={b} className="qp-badge">{b}</span>)}</div>
-                <div className="qp-ttl">{c.title}</div>
-                {pickTab === "rec" && item.reasons?.[0] && <div className="qp-reason">{item.reasons[0]}</div>}
-                <div className={`qp-status ${ok ? "ok" : "no"}`}>{here ? "Already in this quarter" : ok ? "✓ Prerequisites met — you can take it here" : `Needs ${missing.map(fmt).join(", ")} in an earlier quarter`}</div>
+            <section className="cb-sec" key={r.id}>
+              <div className="cb-sec-h"><h3>{label}</h3><span>{r.kind === "all" ? "required" : rem?.kind === "credits" ? `${rem.remaining} cr left` : `${rem?.remaining ?? 0} to pick`}</span></div>
+              <div className="cb-grid">
+                {courses.map((item) => {
+                  const id = item.id, c = COURSES[id]; const on = chosenSet.has(id) || (targetAbs != null && schedAbs(id) === targetAbs);
+                  const miss = missingFor(id); const ok = targetAbs == null || miss.length === 0;
+                  const badges = (c.gened || [c.category]).map((g) => SHORT_AREA[g] || g);
+                  return (
+                    <div key={id} className={`cb-card ${on ? "on" : ""} ${ok ? "" : "blocked"}`}>
+                      <div className="cb-card-body" onClick={() => setOpenDesc(openDesc === id ? null : id)}>
+                        <div className="cb-code"><b>{fmt(id)}</b><span>{c.credits} cr</span>{item.required && <span className="qp-req">req</span>}{badges.map((b) => <span key={b} className="qp-badge">{b}</span>)}</div>
+                        <div className="cb-ttl">{c.title}</div>
+                        {item.reasons?.[0] && <div className="cb-reason">{item.reasons[0]}</div>}
+                        {targetAbs != null && <div className={`qp-status ${ok ? "ok" : "no"}`}>{ok ? "✓ Prereqs met for this quarter" : `Needs ${miss.map(fmt).join(", ")} earlier`}</div>}
+                        {openDesc === id && <div className="cb-desc">{getDesc(id)}</div>}
+                      </div>
+                      <button className={`cb-add ${on ? "on" : ""}`} disabled={!ok} onClick={() => addCourse(id)}>{on ? "✓" : ok ? "＋" : "🔒"}</button>
+                    </div>
+                  );
+                })}
+                {courses.length === 0 && <div className="rb-empty">Nothing left to add here.</div>}
               </div>
-              <span className="qp-add">{here ? "✓" : ok ? "＋" : "🔒"}</span>
-            </div>
+            </section>
           );
-        }
-        return (
-          <div className="cd-overlay" onClick={() => setPickAbs(null)}>
-            <div className="island cd-card picker-card" onClick={(e) => e.stopPropagation()}>
-              <div className="cd-head">
-                <div><div className="cd-title">Add a course · {qLabelAbs(pickAbs)}</div><div className="cd-sub">Recommended courses are ranked by coverage &amp; fit; we check prerequisites for this quarter.</div></div>
-                <button className="cd-close" onClick={() => setPickAbs(null)}>×</button>
-              </div>
-              <div className="cd-tabs">
-                <button className={pickTab === "rec" ? "active" : ""} onClick={() => setPickTab("rec")}>★ Recommended</button>
-                <button className={pickTab === "all" ? "active" : ""} onClick={() => setPickTab("all")}>All courses ({ranked.length})</button>
-              </div>
-              <div className="cd-body picker-body">
-                {list.map(pickRow)}
-                {ranked.length === 0 && <div className="rb-empty">All requirements are satisfied — nothing left to add.</div>}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+        })}
+      </div>
     </div>
   );
 }
@@ -624,7 +646,7 @@ function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
   return (
     <div className="cd-overlay" onClick={onClose}>
       <div className="island cd-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
-        <div className="cd-head"><div><div className="cd-title">Account</div><div className="cd-sub">Signed in to Liquid Planner</div></div><button className="cd-close" onClick={onClose}>×</button></div>
+        <div className="cd-head"><div><div className="cd-title">Account</div><div className="cd-sub">Signed in to Liquid</div></div><button className="cd-close" onClick={onClose}>×</button></div>
         <div className="cd-body">
           <div className="acct-row"><div className="acct-avatar">{(user.name || "?").slice(0, 1).toUpperCase()}</div><div><b>{user.name}</b><div className="acct-email">{user.email}</div></div></div>
           <div className="acct-stats">
@@ -646,11 +668,13 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
   const totalRemaining = Object.values(remainingMap).reduce((s, r) => s + (r.kind === "credits" ? r.remaining : 0), 0);
+  const [viewMore, setViewMore] = useState(null);
+  const [openDesc, setOpenDesc] = useState(null);
   return (
     <div className="design-studio">
       <div className="ds-inner">
         <div className="ds-topbar">
-          <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · drag, drop &amp; add courses across your quarters — {totalRemaining} gen-ed cr left</p></div>
+          <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · add courses across your quarters — {totalRemaining} gen-ed cr left</p></div>
           <div className="ds-actions">
             <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>
             <button className="ds-close" onClick={onClose}>Close ✕</button>
@@ -670,23 +694,30 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
                     {recs.map((rc) => {
                       const c = COURSES[rc.id]; const on = chosenSet.has(rc.id);
                       return (
-                        <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>
-                          <div className="ds-rec-main">
+                        <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id}>
+                          <div className="ds-rec-main" onClick={() => setOpenDesc(openDesc === rc.id ? null : rc.id)}>
                             <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
                             <div className="ds-rec-ttl">{c.title}</div>
+                            {openDesc === rc.id && <div className="ds-rec-desc">{getDesc(rc.id)}</div>}
                           </div>
-                          <span className="ds-add">{on ? "✓" : "＋"}</span>
+                          <button className={`ds-add ${on ? "on" : ""}`} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>{on ? "✓" : "＋"}</button>
                         </div>
                       );
                     })}
+                    <button className="ds-viewmore" onClick={() => setViewMore(r.area)}>View more →</button>
                   </div>
                 );
               })}
-              {openReqs.length === 0 && <div className="ds-done-sm">🎉 Gen-eds on track. Drag courses in the plan or hit Auto-plan.</div>}
+              {openReqs.length === 0 && <div className="ds-done-sm">🎉 Gen-eds on track. Add courses in the plan or hit Auto-plan.</div>}
             </div>
           </aside>
         </div>
       </div>
+      {viewMore && (
+        <CourseBrowser program={program} planIds={boardProps.planIds} completedSet={completedSet} ipSet={ipSet}
+          chosenSet={chosenSet} addChosen={addChosen} schedule={boardProps.schedule}
+          areaFilter={[viewMore]} onClose={() => setViewMore(null)} />
+      )}
     </div>
   );
 }

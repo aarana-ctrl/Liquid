@@ -466,6 +466,50 @@ body {
 .ds-done { grid-column: 1 / -1; padding: 30px; text-align: center; font-size: 15px; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
+/* ---- full-screen Course Browser ---- */
+.course-browser { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; padding: 30px 52px 40px;
+  background: rgba(6,10,26,0.62); backdrop-filter: blur(30px) saturate(160%); -webkit-backdrop-filter: blur(30px) saturate(160%); animation: fadeIn 0.28s ease; }
+.cb-top { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+.cb-top h2 { font-size: 34px; margin: 8px 0 6px; letter-spacing: -0.5px; }
+.cb-top p { font-size: 14.5px; color: var(--text-dim); margin: 0; max-width: 680px; }
+.cb-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.cb-sec { margin-bottom: 32px; }
+.cb-sec-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 14px; }
+.cb-sec-h h3 { font-size: 20px; margin: 0; }
+.cb-sec-h span { font-size: 13px; font-weight: 700; color: var(--accent); }
+.cb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 14px; }
+.cb-card { display: flex; align-items: stretch; gap: 12px; padding: 15px 17px; border-radius: 16px; background: var(--glass-2); border: 1px solid var(--glass-brd); transition: transform .15s, box-shadow .15s; }
+.cb-card:hover { transform: translateY(-2px); box-shadow: 0 14px 30px -18px var(--shadow); }
+.cb-card.on { box-shadow: inset 0 0 0 1.5px var(--enrolled); }
+.cb-card.blocked { opacity: 0.72; }
+.cb-card-body { flex: 1; min-width: 0; cursor: pointer; }
+.cb-code { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cb-code b { font-size: 15.5px; } .cb-code > span:first-of-type { font-size: 12px; color: var(--text-dim); }
+.cb-ttl { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.cb-reason { font-size: 11.5px; color: var(--accent); margin-top: 6px; }
+.cb-desc { font-size: 12.5px; color: var(--text); margin-top: 9px; padding: 9px 11px; border-radius: 10px; background: var(--glass); border: 1px solid var(--glass-brd); line-height: 1.5; }
+.cb-add { flex: none; width: 40px; height: 40px; align-self: center; border-radius: 11px; border: none; display: grid; place-items: center; font-size: 18px; font-weight: 700; color: #fff; background: var(--accent); cursor: pointer; }
+.cb-add.on { background: var(--enrolled); }
+.cb-add:disabled { background: var(--locked); cursor: not-allowed; }
+
+/* rail: description + view more */
+.ds-rec-main { cursor: pointer; }
+.ds-add { border: none; cursor: pointer; }
+.ds-rec-desc { font-size: 11px; color: var(--text); margin-top: 6px; padding: 7px 9px; border-radius: 9px; background: var(--glass); border: 1px solid var(--glass-brd); line-height: 1.45; }
+.ds-viewmore { width: 100%; margin-top: 6px; border: 1px dashed var(--glass-brd); background: transparent; color: var(--accent-2); border-radius: 10px; padding: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: background .15s; }
+.ds-viewmore:hover { background: var(--glass-2); }
+
+/* ---- bigger, sleeker type ---- */
+.greeting h1 { font-size: 42px; letter-spacing: -0.8px; }
+.greeting .eyebrow { font-size: 12px; letter-spacing: 3.5px; }
+.greeting p { font-size: 14px; }
+.card h3 { font-size: 20px; }
+.brand h1 { font-size: 20px; }
+.plan-uni h3 { font-size: 16px; }
+.cd-title { font-size: 18px; }
+.ccard .code { font-size: 13.5px; }
+.ccard .ttl { font-size: 11.5px; }
+
 .footnote { margin: 26px 56px 0; font-size: 11.5px; color: var(--text-faint); text-align: center; line-height: 1.6; }
 .signout { border: 1px solid var(--glass-brd); background: var(--glass-2); color: var(--text); border-radius: 9px; padding: 5px 11px; font-size: 11px; cursor: pointer; }
 .signout:hover { filter: brightness(1.1); }

@@ -412,6 +412,61 @@ export function buildProgram(major, minorIds = []) {
   return { ...major, requirements: reqs, minorIds: minors.map((m) => m.id), name: major.name + minorLabel };
 }
 
+// Course descriptions. In production these sync once from MyPlan course search
+// (they rarely change); here we seed the common ones. Fallback for the rest.
+const DESCRIPTIONS = {
+  CSE121: "Introduction to computer programming: control structures, methods, arrays, and basic object use.",
+  CSE122: "Continues programming: data abstraction, collections, and program decomposition.",
+  CSE123: "Advanced programming: recursion, algorithmic analysis, and data structures.",
+  CSE311: "Foundations of computing: logic, proofs, set theory, induction, and finite state machines.",
+  CSE312: "Discrete probability, counting, randomness in computing, and NP-completeness.",
+  CSE331: "Software design and implementation: specifications, testing, and reasoning about code.",
+  CSE332: "Data structures and parallelism: balanced trees, hashing, graphs, and concurrency.",
+  CSE351: "The hardware/software interface: how programs map to memory, assembly, and the CPU.",
+  CSE333: "Systems programming in C/C++: memory, the file system, networking, and concurrency.",
+  CSE401: "Compiler construction: lexing, parsing, type-checking, and code generation.",
+  CSE421: "Design and analysis of algorithms: greedy, divide-and-conquer, dynamic programming, NP.",
+  CSE446: "Machine learning: regression, classification, neural networks, and model evaluation.",
+  CSE451: "Operating systems: processes, scheduling, memory management, and file systems.",
+  CSE455: "Computer vision: image formation, features, recognition, and deep learning for vision.",
+  CSE461: "Computer networks: protocols, routing, congestion control, and the internet stack.",
+  CSE414: "Databases: relational model, SQL, transactions, and query processing.",
+  MATH124: "Calculus with analytic geometry: limits, derivatives, and applications.",
+  MATH125: "Integral calculus, techniques of integration, and series.",
+  MATH126: "Multivariable calculus: vectors, partial derivatives, and multiple integrals.",
+  MATH208: "Matrix algebra: systems of equations, vector spaces, eigenvalues, and applications.",
+  MATH307: "Ordinary differential equations and their applications.",
+  MATH324: "Advanced multivariable calculus: line and surface integrals, vector fields.",
+  ENGL111: "Composition through the study and writing about literature.",
+  ESS101: "Geology and society: earth processes, natural hazards, and sustainability (W course).",
+  ENVIR239: "Sustainability and personal choices; environmental science with diversity & writing overlays.",
+  PHIL100: "Introduction to the central questions and methods of philosophy.",
+  PHIL120: "Introduction to formal logic: arguments, validity, and proof.",
+  PHIL338: "Ethics in the information age: privacy, AI, and technology's social impact.",
+  COM200: "Introduction to communication theory and practice across contexts.",
+  CHID120: "Yoga past and present: history, philosophy, and cultural context.",
+  AIS170: "American Indian art and aesthetics across cultures and eras.",
+  CMS297: "Cinema and media studies: analyzing film and screen culture.",
+  MUSIC120: "Survey of music: listening, history, and musical forms.",
+  DRAMA101: "Introduction to the theatre: performance, text, and production.",
+  ENGL200: "Reading literary forms: poetry, fiction, and drama.",
+  ECON200: "Introduction to microeconomics: markets, incentives, and welfare.",
+  PSYCH101: "Introduction to psychology: mind, behavior, and research methods.",
+  HSTAA101: "Survey of United States history.",
+  POLS202: "Introduction to American politics and institutions.",
+  ANTH100: "Introduction to anthropology: human cultures and societies.",
+  GEOG123: "Introduction to globalization: economic and cultural connections.",
+  INFO200: "Intellectual foundations of informatics: information, people, and technology.",
+  INFO201: "Technical foundations of informatics: data, code, and computational thinking.",
+  INFO300: "Research methods for information problems.",
+  CHEM142: "General chemistry: atomic structure, bonding, and reactions.",
+  CHEM152: "General chemistry: equilibria, thermodynamics, and kinetics.",
+  PHYS121: "Mechanics: motion, forces, energy, and momentum.",
+  AES150: "Introduction to American ethnic studies (diversity).",
+  GWSS200: "Introduction to gender, women, and sexuality studies (diversity).",
+};
+export function getDesc(id) { return DESCRIPTIONS[id] || "Full course description syncs from MyPlan."; }
+
 // Parse pasted unofficial-transcript / DARS text into known course ids.
 export function parseTranscript(text) {
   const found = new Set();
