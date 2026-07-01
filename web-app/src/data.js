@@ -200,55 +200,115 @@ export const MINORS = {
   global: { id: "global", name: "Global Health Minor" },
   spanish: { id: "spanish", name: "Spanish Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
 };
+// Bulk minors (requirements resolve from DARS). Added to MINORS by name.
+`American Sign Language|Arabic|Architecture|Art History|Astronomy|Bioethics & Humanities|
+Chinese|Cinema & Media Studies|Comparative Literature|Creative Writing|Dance|Data Science|
+Design|European Studies|French|Gender, Women & Sexuality Studies|German|Human Rights|
+Informatics|Italian|Japanese|Jewish Studies|Korean|Labor Studies|Latin American Studies|
+Law, Societies & Justice|Linguistics|Microbiology|Near Eastern Languages|Nutritional Sciences|
+Oceanography|Public Health|Quantitative Science|Russian|Scandinavian|Sociology|Sustainability|
+Urban Design & Planning`
+  .split("|").map((s) => s.trim()).filter(Boolean).forEach((name) => {
+    const id = "m_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18);
+    if (!MINORS[id] && !Object.values(MINORS).some((m) => m.name === name + " Minor")) MINORS[id] = { id, name: name + " Minor" };
+  });
 
 // ---------------------------------------------------------------------------
 // Full program catalog for the picker. Majors with detailed requirements live
 // in MAJORS above; the rest resolve to a general template (Areas of Inquiry +
 // a department-major bucket whose exact courses come from the student's DARS).
 // ---------------------------------------------------------------------------
+// Bulk UW undergraduate majors. cs + informatics have detailed requirements
+// (in MAJORS); the rest resolve to the general template.
+const _MAJORS_RAW = `
+Aeronautics & Astronautics (B.S.)|Engineering
+American Ethnic Studies (B.A.)|Arts & Sciences
+Anthropology (B.A.)|Arts & Sciences
+Applied & Computational Math Sciences (B.S.)|Arts & Sciences
+Aquatic & Fishery Sciences (B.S.)|Environment
+Architecture (B.A.)|Built Environments
+Art History (B.A.)|Arts & Sciences
+Art: Interdisciplinary Visual Arts (B.A.)|Arts & Sciences
+Astronomy (B.S.)|Arts & Sciences
+Atmospheric Sciences (B.S.)|Environment
+Bioengineering (B.S.)|Engineering
+Biochemistry (B.S.)|Arts & Sciences
+Biology (B.S.)|Arts & Sciences
+Business Administration (B.A.)|Foster School
+Chemical Engineering (B.S.)|Engineering
+Chemistry (B.S.)|Arts & Sciences
+Chinese (B.A.)|Arts & Sciences
+Cinema & Media Studies (B.A.)|Arts & Sciences
+Civil Engineering (B.S.)|Engineering
+Classics (B.A.)|Arts & Sciences
+Communication (B.A.)|Arts & Sciences
+Community, Environment & Planning (B.A.)|Built Environments
+Comparative History of Ideas (B.A.)|Arts & Sciences
+Comparative Literature (B.A.)|Arts & Sciences
+Computer Engineering (B.S.)|Allen School of CSE
+Construction Management (B.S.)|Built Environments
+Dance (B.A.)|Arts & Sciences
+Data Science (B.S.)|Interdisciplinary
+Design: Visual Communication (B.Des.)|Arts & Sciences
+Drama (B.A.)|Arts & Sciences
+Early Childhood & Family Studies (B.A.)|Education
+Earth & Space Sciences (B.S.)|Environment
+Ecology, Evolution & Conservation (B.S.)|Arts & Sciences
+Economics (B.A.)|Arts & Sciences
+Electrical & Computer Engineering (B.S.)|Engineering
+English (B.A.)|Arts & Sciences
+Environmental Health (B.S.)|Public Health
+Environmental Science & Resource Mgmt (B.S.)|Environment
+Environmental Studies (B.A.)|Environment
+Finance (B.A.)|Foster School
+French (B.A.)|Arts & Sciences
+Gender, Women & Sexuality Studies (B.A.)|Arts & Sciences
+Geography (B.A.)|Arts & Sciences
+Geography: Data Science (B.A.)|Arts & Sciences
+Germanics (B.A.)|Arts & Sciences
+History (B.A.)|Arts & Sciences
+Human Centered Design & Engineering (B.S.)|Engineering
+Industrial & Systems Engineering (B.S.)|Engineering
+International Studies (B.A.)|Jackson School
+Italian Studies (B.A.)|Arts & Sciences
+Japanese (B.A.)|Arts & Sciences
+Journalism & Public Interest Comm. (B.A.)|Arts & Sciences
+Korean (B.A.)|Arts & Sciences
+Landscape Architecture (B.L.A.)|Built Environments
+Law, Societies & Justice (B.A.)|Arts & Sciences
+Linguistics (B.A.)|Arts & Sciences
+Marine Biology (B.S.)|Environment
+Materials Science & Engineering (B.S.)|Engineering
+Mathematics (B.S.)|Arts & Sciences
+Mechanical Engineering (B.S.)|Engineering
+Microbiology (B.S.)|Medicine
+Music (B.A.)|Arts & Sciences
+Near Eastern Languages & Civilization (B.A.)|Arts & Sciences
+Neuroscience (B.S.)|Arts & Sciences
+Nursing (B.S.N.)|Nursing
+Nutritional Sciences (B.S.)|Public Health
+Oceanography (B.S.)|Environment
+Philosophy (B.A.)|Arts & Sciences
+Physics (B.S.)|Arts & Sciences
+Political Science (B.A.)|Arts & Sciences
+Psychology (B.S.)|Arts & Sciences
+Public Health-Global Health (B.A.)|Public Health
+Real Estate (B.A.)|Foster School
+Religion: Comparative Religion (B.A.)|Arts & Sciences
+Russian (B.A.)|Arts & Sciences
+Scandinavian Studies (B.A.)|Arts & Sciences
+Social Welfare (B.A.)|Social Work
+Sociology (B.A.)|Arts & Sciences
+Spanish (B.A.)|Arts & Sciences
+Speech & Hearing Sciences (B.S.)|Arts & Sciences
+Statistics (B.S.)|Arts & Sciences
+Urban Design & Planning (B.A.)|Built Environments
+`;
+const _slug = (name) => name.toLowerCase().replace(/\(b[^)]*\)/, "").replace(/[^a-z0-9]+/g, "").slice(0, 22);
 export const MAJOR_CATALOG = [
   { id: "cs", name: "Computer Science (B.S.)", school: "Allen School of CSE" },
   { id: "informatics", name: "Informatics (B.S.)", school: "The Information School" },
-  { id: "ce", name: "Computer Engineering (B.S.)", school: "Allen School of CSE" },
-  { id: "ee", name: "Electrical & Computer Engineering (B.S.)", school: "ECE" },
-  { id: "math", name: "Mathematics (B.S.)", school: "College of Arts & Sciences" },
-  { id: "acms", name: "Applied & Computational Math Sciences (B.S.)", school: "Arts & Sciences" },
-  { id: "stat", name: "Statistics (B.S.)", school: "Arts & Sciences" },
-  { id: "datasci", name: "Data Science (B.S.)", school: "Interdisciplinary" },
-  { id: "bioe", name: "Bioengineering (B.S.)", school: "College of Engineering" },
-  { id: "me", name: "Mechanical Engineering (B.S.)", school: "College of Engineering" },
-  { id: "cee", name: "Civil & Environmental Engineering (B.S.)", school: "Engineering" },
-  { id: "cheme", name: "Chemical Engineering (B.S.)", school: "Engineering" },
-  { id: "ise", name: "Industrial & Systems Engineering (B.S.)", school: "Engineering" },
-  { id: "aa", name: "Aeronautics & Astronautics (B.S.)", school: "Engineering" },
-  { id: "mse", name: "Materials Science & Engineering (B.S.)", school: "Engineering" },
-  { id: "biochem", name: "Biochemistry (B.S.)", school: "Arts & Sciences" },
-  { id: "biology", name: "Biology (B.S.)", school: "Arts & Sciences" },
-  { id: "chemistry", name: "Chemistry (B.S.)", school: "Arts & Sciences" },
-  { id: "physics", name: "Physics (B.S.)", school: "Arts & Sciences" },
-  { id: "astronomy", name: "Astronomy (B.S.)", school: "Arts & Sciences" },
-  { id: "ess", name: "Earth & Space Sciences (B.S.)", school: "Arts & Sciences" },
-  { id: "envsci", name: "Environmental Science & Resource Mgmt (B.S.)", school: "Environment" },
-  { id: "psychology", name: "Psychology (B.S.)", school: "Arts & Sciences" },
-  { id: "economics", name: "Economics (B.A.)", school: "Arts & Sciences" },
-  { id: "business", name: "Business Administration (B.A.)", school: "Foster School" },
-  { id: "communication", name: "Communication (B.A.)", school: "Arts & Sciences" },
-  { id: "english", name: "English (B.A.)", school: "Arts & Sciences" },
-  { id: "history", name: "History (B.A.)", school: "Arts & Sciences" },
-  { id: "philosophy", name: "Philosophy (B.A.)", school: "Arts & Sciences" },
-  { id: "politicalsci", name: "Political Science (B.A.)", school: "Arts & Sciences" },
-  { id: "sociology", name: "Sociology (B.A.)", school: "Arts & Sciences" },
-  { id: "anthropology", name: "Anthropology (B.A.)", school: "Arts & Sciences" },
-  { id: "geography", name: "Geography (B.A.)", school: "Arts & Sciences" },
-  { id: "intlstudies", name: "International Studies (B.A.)", school: "Jackson School" },
-  { id: "linguistics", name: "Linguistics (B.A.)", school: "Arts & Sciences" },
-  { id: "arthistory", name: "Art History (B.A.)", school: "Arts & Sciences" },
-  { id: "drama", name: "Drama (B.A.)", school: "Arts & Sciences" },
-  { id: "music", name: "Music (B.A.)", school: "Arts & Sciences" },
-  { id: "architecture", name: "Architecture (B.A.)", school: "Built Environments" },
-  { id: "publichealth", name: "Public Health (B.A.)", school: "School of Public Health" },
-  { id: "nursing", name: "Nursing (B.S.N.)", school: "School of Nursing" },
-  { id: "kinesiology", name: "Kinesiology (B.S.)", school: "Public Health" },
+  ..._MAJORS_RAW.trim().split("\n").map((line) => { const [name, school] = line.split("|"); return { id: _slug(name), name: name.trim(), school: (school || "UW").trim() }; }),
 ];
 
 // ---------------------------------------------------------------------------

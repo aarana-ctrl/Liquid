@@ -32,6 +32,12 @@ function nextQuarters(startAbs, n, includeSummer) {
   while (out.length < n) { if (includeSummer || absToQ(a).term !== "SU") out.push(a); a++; }
   return out;
 }
+// "Current" quarter = the quarter of the in-progress courses if any (that's what
+// the student is doing now per their registration); otherwise the wall clock.
+function effectiveCurrentAbs(ipSet, courseTerms) {
+  const ip = [...ipSet].map((id) => parseQ(courseTerms[id])).filter((a) => a != null);
+  return ip.length ? Math.max(...ip) : currentAbs();
+}
 const CAT_VAR = {
   intro: "var(--cat-intro)", math: "var(--cat-math)", core: "var(--cat-core)", core400: "var(--cat-core400)",
   science: "var(--cat-science)", arts: "var(--cat-arts)", social: "var(--cat-social)", english: "var(--cat-english)", diversity: "var(--cat-diversity)",
@@ -105,8 +111,14 @@ const I = {
 const GoogleLogo = () => (<svg viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9 3.6l6.7-6.7C35.6 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.8 6.1C12.3 13.2 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.5 3-2.2 5.5-4.7 7.2l7.3 5.7c4.3-4 6.9-9.9 6.9-17.4z"/><path fill="#FBBC05" d="M10.4 28.3c-.5-1.5-.8-3.1-.8-4.8s.3-3.3.8-4.8l-7.8-6.1C.9 16 0 19.9 0 24s.9 8 2.6 11.4z"/><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.3-5.7c-2 1.4-4.7 2.3-7.9 2.3-6.3 0-11.7-3.7-13.6-9.1l-7.8 6.1C6.5 42.6 14.6 48 24 48z"/></svg>);
 const AppleLogo = () => (<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M16.37 12.62c.03 3.27 2.86 4.35 2.9 4.37-.02.08-.45 1.55-1.49 3.07-.9 1.31-1.83 2.61-3.3 2.64-1.44.03-1.9-.85-3.55-.85-1.64 0-2.16.82-3.52.88-1.42.05-2.5-1.42-3.41-2.72C.66 19.32-.74 14.46 1.2 11.18c.96-1.63 2.68-2.66 4.54-2.69 1.39-.03 2.7.94 3.55.94.85 0 2.44-1.16 4.11-.99.7.03 2.67.28 3.93 2.13-.1.06-2.35 1.37-2.33 4.09M13.6 5.34c.75-.91 1.26-2.18 1.12-3.44-1.08.04-2.39.72-3.17 1.63-.7.8-1.31 2.09-1.15 3.32 1.21.09 2.44-.61 3.2-1.51"/></svg>);
 
-// ---- background: clean white (photo removed) -------------------------------
-function Sky() { return null; }
+// ---- endless liquid-glass canvas: drifting color the glass refracts --------
+function Sky() {
+  return (
+    <div className="canvas" aria-hidden>
+      <span className="blob b1" /><span className="blob b2" /><span className="blob b3" /><span className="blob b4" />
+    </div>
+  );
+}
 
 // ---- assistant orb + radial dial -------------------------------------------
 function AssistantOrb({ open, onToggle, items }) {
@@ -147,7 +159,7 @@ function Login({ onSignIn, backendOnline, oidcEnabled }) {
         <h1>Liquid Planner</h1>
         <p className="login-sub">Sign in with your UW email to load your degree audit.</p>
         <button className="prov google" disabled={!!busy} onClick={google}><GoogleLogo /><span>{busy === "google" ? "Redirecting…" : "Continue with Google"}</span></button>
-        <button className="prov apple" disabled={!!busy} onClick={() => go("apple")}><AppleLogo /><span>{busy === "apple" ? "Signing in…" : "Continue with Apple"}</span></button>
+        {!realSso && <button className="prov apple" disabled={!!busy} onClick={() => go("apple")}><AppleLogo /><span>{busy === "apple" ? "Signing in…" : "Continue with Apple"}</span></button>}
         <div className="login-or"><span>or</span></div>
         <button className="prov netid" disabled={!!busy} onClick={netid}>{busy === "netid" ? "Redirecting to UW…" : "Continue with UW NetID"}</button>
         <p className="login-note"><span className={`srv-dot ${backendOnline ? "on" : "off"}`} />
@@ -165,7 +177,7 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, courseTerm
   const boardRef = useRef(null), colsRef = useRef(null), cardRefs = useRef({}), curColRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [dragId, setDragId] = useState(null);
-  const cur = currentAbs();
+  const cur = effectiveCurrentAbs(ipSet, courseTerms);
 
   // absolute quarter for a course (completed/in-progress use the real DARS term)
   const schedAbs = (id) => { const v = schedule[id]; return typeof v === "number" && v > 5000 ? v : null; }; // guard old index-format
@@ -350,9 +362,10 @@ function AuditCard({ program, snapshot, onResync, syncing }) {
     </div>
   );
 }
-function ThisQuarter({ ipSet }) {
+function ThisQuarter({ ipSet, courseTerms }) {
   const list = [...ipSet].filter((id) => COURSES[id]);
   const cr = list.reduce((s, id) => s + COURSES[id].credits, 0);
+  const curLabel = qLabelAbs(effectiveCurrentAbs(ipSet, courseTerms || {}));
   return (
     <div className="island card">
       <div className="eyebrow">This Quarter <span className="pill-sm">{cr} cr</span></div>
@@ -362,7 +375,7 @@ function ThisQuarter({ ipSet }) {
         ))}
         {list.length === 0 && <div className="rb-empty">No enrolled courses — sync MyPlan.</div>}
       </div>
-      <div className="tq-foot"><span>{qLabelAbs(currentAbs())} · {list.length} courses</span><span>no conflicts</span></div>
+      <div className="tq-foot"><span>{curLabel} · {list.length} courses</span><span>no conflicts</span></div>
     </div>
   );
 }
@@ -493,6 +506,10 @@ function describeDelta(d) {
   return "";
 }
 function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose }) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const majors = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.school.toLowerCase().includes(needle));
+  const minors = Object.values(MINORS).filter((m) => !needle || m.name.toLowerCase().includes(needle));
   return (
     <div className="cd-overlay" onClick={onClose}>
       <div className="island cd-card" onClick={(e) => e.stopPropagation()}>
@@ -501,15 +518,16 @@ function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose }) {
           <button className="cd-close" onClick={onClose}>×</button>
         </div>
         <div className="cd-body">
-          <div className="section-h" style={{ margin: "0 0 10px" }}>Major <span className="mm-count">{MAJOR_CATALOG.length}</span></div>
-          {MAJOR_CATALOG.map((m) => (
+          <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search majors & minors…" autoFocus />
+          <div className="section-h" style={{ margin: "0 0 10px" }}>Major <span className="mm-count">{majors.length}</span></div>
+          {majors.map((m) => (
             <label key={m.id} className={`mm-row ${majorId === m.id ? "sel" : ""}`}>
               <input type="radio" name="major" checked={majorId === m.id} onChange={() => onMajor(m.id)} />
               <div className="mm-info"><b>{m.name}</b><span>{m.school}</span></div>
             </label>
           ))}
-          <div className="section-h" style={{ margin: "18px 0 10px" }}>Minors <span className="mm-count">{Object.keys(MINORS).length}</span></div>
-          {Object.values(MINORS).map((m) => (
+          <div className="section-h" style={{ margin: "18px 0 10px" }}>Minors <span className="mm-count">{minors.length}</span></div>
+          {minors.map((m) => (
             <label key={m.id} className={`mm-row ${minorIds.includes(m.id) ? "sel" : ""}`}>
               <input type="checkbox" checked={minorIds.includes(m.id)} onChange={() => onToggleMinor(m.id)} />
               <div className="mm-info"><b>{m.name}</b><span>{(m.deltas && m.deltas.length) ? m.deltas.map(describeDelta).join(" · ") : "Department requirements (from DARS)"}</span></div>
@@ -771,7 +789,7 @@ export default function App() {
           </div>
           <div className="side">
             <AuditCard program={program} snapshot={snapshot} onResync={handleSync} syncing={syncing} />
-            <ThisQuarter ipSet={ipSet} />
+            <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />
             <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
               <button className="signout" onClick={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); }}>Sign out</button>

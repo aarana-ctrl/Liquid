@@ -12,17 +12,20 @@ export const PROVIDERS = {
   netid: { id: "netid", label: "Continue with UW NetID" },
 };
 
-// Demo profiles returned by the mock flow. The UW NetID profile matches the
-// MyPlan snapshot so the audit lines up after sign-in.
-const DEMO_PROFILES = {
-  google: { name: "Rana A.", email: "aarana@gmail.com", provider: "google" },
-  apple: { name: "Rana A.", email: "rana@icloud.com", provider: "apple" },
-  netid: { name: "aarana", email: "aarana@uw.edu", provider: "netid" },
-};
+// A stable-but-unique demo identity PER BROWSER, so two people never share an
+// account in demo mode. (Production uses real Google→UW OAuth instead.)
+function demoId() {
+  try {
+    let s = localStorage.getItem("lp_demo_id");
+    if (!s) { s = Math.random().toString(36).slice(2, 10); localStorage.setItem("lp_demo_id", s); }
+    return s;
+  } catch { return Math.random().toString(36).slice(2, 10); }
+}
 
 export function mockSignIn(providerId) {
+  const id = demoId();
   return new Promise((resolve) =>
-    setTimeout(() => resolve(DEMO_PROFILES[providerId] || DEMO_PROFILES.netid), 600)
+    setTimeout(() => resolve({ name: "Demo Student", email: `demo-${id}@uw.edu`, provider: providerId }), 400)
   );
 }
 

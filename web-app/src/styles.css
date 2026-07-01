@@ -9,17 +9,18 @@
   --bg-1: #ffffff;
   --bg-2: #e7ebf3;
 
-  --glass: #ffffff;
-  --glass-2: #f5f7fb;
-  --glass-brd: rgba(22, 34, 64, 0.10);
-  --glass-hi: rgba(255, 255, 255, 0.9);
-  --shadow: rgba(30, 42, 84, 0.12);
-  --track: rgba(22, 34, 64, 0.09);
-  --field: #f4f6fb;
+  /* translucent liquid glass — light bends through from the canvas behind */
+  --glass: rgba(255, 255, 255, 0.46);
+  --glass-2: rgba(255, 255, 255, 0.6);
+  --glass-brd: rgba(255, 255, 255, 0.6);
+  --glass-hi: rgba(255, 255, 255, 0.85);
+  --shadow: rgba(38, 44, 92, 0.22);
+  --track: rgba(40, 50, 92, 0.14);
+  --field: rgba(255, 255, 255, 0.5);
 
-  --text: #1a2233;
-  --text-dim: #5c6678;
-  --text-faint: #98a1b3;
+  --text: #1b2333;
+  --text-dim: #45506a;
+  --text-faint: #6d7892;
   --edge: rgba(120, 130, 160, 0.4);
 
   --accent: #6b5ce0;
@@ -43,23 +44,55 @@
 html, body { height: 100%; }
 body {
   margin: 0; color: var(--text);
-  background: var(--bg-0);
+  background:
+    radial-gradient(1100px 760px at 14% 18%, #c9dcff 0%, transparent 58%),
+    radial-gradient(1000px 720px at 86% 12%, #ecd6ff 0%, transparent 55%),
+    radial-gradient(1200px 900px at 78% 88%, #c8efe0 0%, transparent 55%),
+    radial-gradient(900px 800px at 22% 92%, #ffd6ea 0%, transparent 55%),
+    linear-gradient(160deg, #eaf0fb 0%, #e6ecf8 100%);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
 }
 
-/* background photo removed — clean white theme */
-.bg-photo, .sky, .mtns, .star { display: none !important; }
+/* endless canvas: soft drifting color so light bends behind the glass */
+.canvas { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.blob { position: absolute; border-radius: 50%; filter: blur(72px); opacity: 0.55; }
+.blob.b1 { width: 540px; height: 540px; background: #7ea2ff; top: -6%; left: 4%; animation: drift1 24s ease-in-out infinite; }
+.blob.b2 { width: 460px; height: 460px; background: #57d6b6; top: 30%; right: 6%; animation: drift2 28s ease-in-out infinite; }
+.blob.b3 { width: 420px; height: 420px; background: #c89bff; bottom: 2%; left: 22%; animation: drift3 26s ease-in-out infinite; }
+.blob.b4 { width: 380px; height: 380px; background: #ff9ec7; top: 14%; left: 42%; animation: drift1 30s ease-in-out infinite reverse; }
+@keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(50px,40px) scale(1.12); } }
+@keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-60px,30px) scale(1.08); } }
+@keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(40px,-50px) scale(1.1); } }
+
+.app, .login-wrap { position: relative; z-index: 1; }
 
 .app, .login-wrap { position: relative; z-index: 1; }
 
 /* ---- glass island primitive ---- */
 .island {
+  position: relative;
   background: var(--glass);
   border: 1px solid var(--glass-brd);
   border-radius: var(--radius);
-  box-shadow: 0 10px 30px -18px var(--shadow);
+  box-shadow:
+    0 22px 50px -26px var(--shadow),
+    0 2px 8px -4px rgba(30,40,90,0.10),
+    inset 0 1px 0 var(--glass-hi),
+    inset 0 -8px 20px -12px rgba(255,255,255,0.35);
+  backdrop-filter: blur(24px) saturate(190%);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  transition: box-shadow 0.35s cubic-bezier(.2,.7,.2,1), transform 0.35s cubic-bezier(.2,.7,.2,1);
+  animation: glassIn 0.5s cubic-bezier(.2,.7,.2,1) both;
 }
+/* specular sheen — a diagonal light streak across the glass */
+.island::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(130deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.12) 22%, rgba(255,255,255,0) 46%);
+  opacity: 0.75; mix-blend-mode: screen;
+}
+@keyframes glassIn { from { opacity: 0; transform: translateY(10px) scale(0.985); } to { opacity: 1; transform: none; } }
 
 /* left gutter holds the dock (26px in); right gutter mirrors it (26px in);
    content (greeting + islands) is offset further from the left so it clears the dock. */
@@ -155,6 +188,11 @@ body {
 .mm-info b { font-size: 13.5px; }
 .mm-info span { font-size: 11.5px; color: var(--text-dim); }
 .mm-count { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--glass-2); border: 1px solid var(--glass-brd); border-radius: 999px; padding: 1px 8px; margin-left: 8px; }
+.mm-search { width: 100%; margin-bottom: 14px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--glass-brd); background: var(--field); color: var(--text); font-size: 13.5px; outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
+.mm-search::placeholder { color: var(--text-faint); }
+.mm-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(107,92,224,0.15); }
+.mm-row { transition: box-shadow .2s ease, background .2s ease, transform .2s ease; }
+.mm-row:hover { transform: translateX(2px); background: var(--glass); }
 
 .audit-link { display: block; text-align: center; margin-top: 8px; font-size: 11.5px; color: var(--accent-2); text-decoration: none; }
 .audit-link:hover { text-decoration: underline; }
