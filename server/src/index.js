@@ -90,7 +90,29 @@ app.put("/api/plan", auth, async (req, res) => {
 });
 
 // ---- MyPlan snapshot -------------------------------------------------------
-// GET: any device reads the latest scraped audit.
+// Merge a freshly-parsed DARS audit into the user's snapshot. The latest audit
+// becomes the "current" snapshot (earned / in-progress / terms drive the
+// planner), and every program the student has run through DARS is retained in a
+// `programs` map keyed by program name — this is what makes Compare exact.
+async function mergeProgramSnapshot(userId, snap) {
+  const prev = (await getSnapshot(userId)) || {};
+  const programs = { ...(prev.programs || {}) };
+  const key = snap.program || "Degree";
+  programs[key] = {
+    program: snap.program,
+    level: snap.level || "major",
+    catalogYear: snap.catalogYear,
+    gpa: snap.gpa,
+    audit: snap.audit,
+    requirements: snap.requirements || [],
+    earned: snap.earned,
+    inProgress: snap.inProgress,
+    fetchedAt: snap.fetchedAt,
+  };
+  return saveSnapshot(userId, { ...snap, programs });
+}
+
+// GET: any device reads the latest scraped audit (with the per-program map).
 app.get("/api/snapshot", auth, async (req, res) => res.json(await getSnapshot(req.user.sub)));
 // POST: the connect-and-read agent ingests a fresh scrape (raw snapshot object).
 app.post("/api/snapshot", auth, async (req, res) => {
@@ -107,8 +129,8 @@ app.post("/api/import/dars", cors({ origin: true }), auth, async (req, res) => {
   const text = req.body?.darsText;
   if (!text || typeof text !== "string") return res.status(400).json({ error: "darsText required" });
   const snap = parseDars(text);
-  await saveSnapshot(req.user.sub, snap);
-  res.json({ ok: true, audit: snap.audit, program: snap.program, earnedCount: snap.earned.length, inProgressCount: snap.inProgress.length });
+  const saved = await mergeProgramSnapshot(req.user.sub, snap);
+  res.json({ ok: true, audit: snap.audit, program: snap.program, earnedCount: snap.earned.length, inProgressCount: snap.inProgress.length, programsKnown: Object.keys(saved.programs || {}).length });
 });
 
 // ---- MyPlan handoff (bookmarklet import) -----------------------------------
@@ -131,7 +153,7 @@ app.post("/api/import/:code", cors({ origin: true }), async (req, res) => {
   const text = req.body?.darsText;
   if (!text || typeof text !== "string") return res.status(400).json({ error: "darsText required" });
   const snap = parseDars(text);
-  await saveSnapshot(rec.userId, snap);
+  await mergeProgramSnapshot(rec.userId, snap);
   importCodes.delete(req.params.code);
   res.json({ ok: true, audit: snap.audit, program: snap.program, earnedCount: snap.earned.length, inProgressCount: snap.inProgress.length });
 });

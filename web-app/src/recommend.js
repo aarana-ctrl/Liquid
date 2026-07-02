@@ -81,6 +81,72 @@ export function recommend({ area, remainingMap, taken, planned, satisfied }) {
     .sort((a, b) => b.score - a.score);
 }
 
+// --- Compare mode: how much is left for a given major, from your transcript ---
+export function compareProgram(program, completedSet, ipSet) {
+  const remMap = computeRemaining(program, completedSet, ipSet, new Set());
+  const prog = degreeProgress(program, completedSet, ipSet);
+  const cats = [];
+  for (const r of program.requirements) {
+    if (r.kind === "credits") { const m = remMap[r.area]; cats.push({ label: r.label.replace(/ —.*/, ""), need: r.needCredits, remaining: m.remaining, unit: "cr" }); }
+    else if (r.kind === "choose") { const m = remMap[r.area]; cats.push({ label: r.label.replace(/ \(.*/, ""), need: r.needCount, remaining: m.remaining, unit: "courses" }); }
+    else if (r.kind === "all") { const done = r.courses.filter((id) => completedSet.has(id) || ipSet.has(id)).length; cats.push({ label: r.label, need: r.courses.length, remaining: r.courses.length - done, unit: "courses" }); }
+  }
+  return { id: program.id, name: program.name, total: prog.total, earned: prog.earned, remaining: prog.remaining, pct: prog.pct, cats };
+}
+
+// --- EXACT compare, straight from a captured DARS audit ---------------------
+// Given a program's stored DARS audit (from the extension), build the same
+// compare shape but with the real, per-category numbers DARS reported.
+const SKIP_REQ = /University requires|minimum of \d+ academic|Bachelor|Minimum (cumulative|graded)|Total credits|residence/i;
+
+export function compareFromAudit(meta, audit) {
+  const a = audit.audit || {};
+  const total = a.totalRequired || 180;
+  const earned = a.earned ?? 0;
+  const needs = a.needs ?? Math.max(0, total - earned);
+  const cats = (audit.requirements || [])
+    .filter((r) => !SKIP_REQ.test(r.label) && (r.needsCr != null || r.needsCourses != null || r.earnedCr != null))
+    .map((r) => {
+      const isCourses = r.needsCourses != null && r.needsCr == null;
+      const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
+      const have = (r.earnedCr || 0) + (r.ipCr || 0);
+      const need = isCourses ? r.needsCourses : (have + (r.needsCr || 0));
+      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 70), need, remaining, unit: isCourses ? "courses" : "cr" };
+    })
+    .sort((x, y) => y.remaining - x.remaining);
+  return {
+    id: meta.id, name: meta.name,
+    total, earned, remaining: needs, pct: Math.round((earned / total) * 100),
+    cats, exact: true, program: audit.program, catalogYear: audit.catalogYear,
+  };
+}
+
+// Find a captured audit that matches a catalog program by name keywords.
+export function findAudit(name, programs, level) {
+  if (!programs) return null;
+  const core = String(name).replace(/\s*\([^)]*\)\s*$/, "").replace(/\b(B\.?S\.?|B\.?A\.?|minor|major)\b/gi, "").trim().toLowerCase();
+  if (!core) return null;
+  for (const key of Object.keys(programs)) {
+    const p = programs[key];
+    if (level && p.level && p.level !== level) continue;
+    const title = String(p.program || key).toLowerCase();
+    if (title.includes(core) || core.includes(title.replace(/^(bachelor of (science|arts)|minor)\s*\(?/, "").replace(/\)$/, "").trim())) return p;
+  }
+  return null;
+}
+
+// Minor comparison: credits toward the minor come from courses in its departments.
+export function compareMinor(minor, completedSet, ipSet) {
+  const taken = [...new Set([...completedSet, ...ipSet])];
+  const reqCredits = minor.reqCredits || 30;
+  const depts = minor.depts || [];
+  const have = depts.length
+    ? taken.filter((id) => depts.some((d) => id.startsWith(d))).reduce((s, id) => s + (COURSES[id]?.credits || 0), 0)
+    : 0;
+  const capped = Math.min(have, reqCredits);
+  return { id: minor.id, name: minor.name, reqCredits, have: capped, remaining: reqCredits - capped, estimated: depts.length === 0 };
+}
+
 // Global ranking across ALL open requirements (gen-ed + core) for the Add picker.
 // Required core courses rank highest, then breadth of still-needed coverage.
 export function recommendGlobal(program, completedSet, ipSet, chosenSet) {

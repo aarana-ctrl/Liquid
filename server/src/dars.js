@@ -5,7 +5,14 @@
 export function parseDars(text) {
   const t = String(text || "");
 
-  const program = (t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i) || [])[1];
+  // Program title — bachelor's major, or a minor audit ("MINOR (STATISTICS)").
+  const bach = t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i);
+  const minorM = !bach && t.match(/\bMINOR(?:\s+IN)?\s*\(?\s*([A-Z][A-Za-z &]+?)\s*\)?\s*(?:\n|Catalog)/i);
+  const program = bach ? bach[1] : null;
+  const minorName = minorM ? minorM[1].trim() : null;
+  const cased = (s) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  const programTitle = bach ? `Bachelor of Science (${cased(program)})`
+    : minorName ? `Minor (${cased(minorName)})` : "Degree";
   const catalogYear = (t.match(/Catalog Year:\s*([A-Z]{2}\s*\d{2})/i) || [])[1]?.replace(/\s+/g, " ").trim();
   const gpa = parseFloat((t.match(/Earned:\s*([\d.]+)\s*GPA/i) || [])[1]) || null;
 
@@ -34,12 +41,51 @@ export function parseDars(text) {
   return {
     source: "UW MyPlan · DARS (imported)",
     fetchedAt: new Date().toISOString(),
-    program: program ? `Bachelor of Science (${program.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())})` : "Degree",
+    program: programTitle,
+    level: bach ? "major" : minorName ? "minor" : "degree",
     catalogYear: catalogYear || "",
     gpa,
     audit,
     earned: [...earned],
     inProgress: [...inProgress],
     terms,
+    requirements: parseRequirements(t),   // full per-requirement breakdown
   };
+}
+
+// Extract every requirement block DARS lists, with its exact earned / in-progress
+// / needed credits (or courses). This is what powers exact, per-category compare.
+export function parseRequirements(text) {
+  const lines = String(text || "").split("\n").map((l) => l.trim()).filter(Boolean);
+  const STATUS = /^(NO|OK|IP[+-]?|N\/A|Completed|Not completed|In progress|THE SUB-REQUIREMENT|A COURSE IS|IP\+|IP-|Qtr\b|Notes$|NOTE:|FEDERAL LAW|END OF ANALYSIS|Related:|Show incomplete|Choose Different|Refresh Audit|Date Prepared|Prepared For|Graduation Date|Catalog Year|This report|Please review|Audit a UW|For more information|For reference|For Reference)/i;
+  const COURSE_ROW = /^[A-Z]{2}\d{2}\s+[A-Z]/;                 // e.g. "AU25 CSE 311 ..."
+  const CREDIT = /(Earned:|In-progress:|Needs:)/;
+  const num = (re, s) => { const mm = s.match(re); return mm ? +mm[1] : null; };
+
+  const reqs = [];
+  let label = null, cur = null;
+  const flush = () => {
+    if (cur && (cur.needsCr != null || cur.needsCourses != null || cur.earnedCr != null)) reqs.push(cur);
+    cur = null;
+  };
+  for (const line of lines) {
+    if (CREDIT.test(line)) {
+      if (!cur) cur = { label: label || "Requirement", earnedCr: null, ipCr: null, needsCr: null, needsCourses: null };
+      const e = num(/Earned:\s*(\d+)\s*credits/i, line); if (e != null) cur.earnedCr = e;
+      const ip = num(/In-progress:\s*(\d+)\s*credits/i, line); if (ip != null) cur.ipCr = ip;
+      const nc = num(/Needs:\s*(\d+)\s*credits/i, line); if (nc != null) cur.needsCr = nc;
+      const no = num(/Needs:\s*(\d+)\s*course/i, line); if (no != null) cur.needsCourses = no;
+      continue;
+    }
+    if (STATUS.test(line) || COURSE_ROW.test(line) || /^[\d.]+$/.test(line)) continue;
+    if (/[A-Za-z]/.test(line) && line.length > 3) { flush(); label = line.replace(/\s+/g, " ").trim(); cur = null; }
+  }
+  flush();
+  // de-dupe identical labels, keep the one with the most info
+  const byLabel = {};
+  for (const r of reqs) {
+    const k = r.label.toLowerCase();
+    if (!byLabel[k] || (r.needsCr ?? r.needsCourses ?? 0) > (byLabel[k].needsCr ?? byLabel[k].needsCourses ?? 0)) byLabel[k] = r;
+  }
+  return Object.values(byLabel);
 }

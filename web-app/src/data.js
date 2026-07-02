@@ -165,40 +165,34 @@ export const MAJORS = {
 //   { area, addCount }    -> add courses to the matching "choose" requirement
 //   { kind:"all", ... }   -> append a new required-courses block
 // ---------------------------------------------------------------------------
+// reqCredits + depts power Compare mode (credits toward the minor come from
+// courses whose code starts with one of `depts`). deltas power the additive merge.
 export const MINORS = {
-  sustainability: {
-    id: "sustainability", name: "Sustainability Minor",
-    deltas: [ { area: "science", addCredits: 5 }, { area: "arts", addCredits: 5 } ],
-  },
-  datascience: {
-    id: "datascience", name: "Data Science Minor",
-    deltas: [ { area: "core400", addCount: 2 }, { area: "social", addCredits: 5 } ],
-  },
-  math: {
-    id: "math", name: "Mathematics Minor",
-    deltas: [ { kind: "all", id: "min-math", label: "Minor: Mathematics", courses: ["MATH307", "MATH324"] } ],
-  },
-  // Broader UW minor list (department requirements resolve from DARS on import).
-  amath: { id: "amath", name: "Applied Mathematics Minor" },
-  stats: { id: "stats", name: "Statistics Minor", deltas: [ { area: "science", addCredits: 5 } ] },
-  astrobio: { id: "astrobio", name: "Astrobiology Minor" },
-  econ: { id: "econ", name: "Economics Minor", deltas: [ { area: "social", addCredits: 10 } ] },
-  psych: { id: "psych", name: "Psychology Minor", deltas: [ { area: "social", addCredits: 10 } ] },
-  philosophy: { id: "philosophy", name: "Philosophy Minor", deltas: [ { area: "arts", addCredits: 10 } ] },
-  english: { id: "english", name: "English Minor", deltas: [ { area: "arts", addCredits: 10 } ] },
-  history: { id: "history", name: "History Minor", deltas: [ { area: "arts", addCredits: 10 } ] },
-  music: { id: "music", name: "Music Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
-  physics: { id: "physics", name: "Physics Minor", deltas: [ { area: "science", addCredits: 10 } ] },
-  chem: { id: "chem", name: "Chemistry Minor", deltas: [ { area: "science", addCredits: 10 } ] },
-  biology: { id: "biology", name: "Biology Minor", deltas: [ { area: "science", addCredits: 10 } ] },
-  geog: { id: "geog", name: "Geography Minor", deltas: [ { area: "social", addCredits: 5 } ] },
-  pols: { id: "pols", name: "Political Science Minor", deltas: [ { area: "social", addCredits: 10 } ] },
-  comm: { id: "comm", name: "Communication Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
-  hcde: { id: "hcde", name: "Human Centered Design & Eng. Minor" },
-  entre: { id: "entre", name: "Entrepreneurship Minor" },
-  diversity: { id: "diversity", name: "Diversity Minor", deltas: [ { area: "diversity", addCredits: 10 } ] },
-  global: { id: "global", name: "Global Health Minor" },
-  spanish: { id: "spanish", name: "Spanish Minor", deltas: [ { area: "arts", addCredits: 5 } ] },
+  sustainability: { id: "sustainability", name: "Sustainability Minor", reqCredits: 25, depts: ["ENVIR", "ESS", "BIOL", "ATMS"], deltas: [ { area: "science", addCredits: 5 }, { area: "arts", addCredits: 5 } ] },
+  datascience: { id: "datascience", name: "Data Science Minor", reqCredits: 25, depts: ["CSE", "STAT", "INFO", "MATH"], deltas: [ { area: "core400", addCount: 2 }, { area: "social", addCredits: 5 } ] },
+  math: { id: "math", name: "Mathematics Minor", reqCredits: 30, depts: ["MATH"], deltas: [ { kind: "all", id: "min-math", label: "Minor: Mathematics", courses: ["MATH307", "MATH324"] } ] },
+  amath: { id: "amath", name: "Applied Mathematics Minor", reqCredits: 27, depts: ["AMATH", "MATH"] },
+  stats: { id: "stats", name: "Statistics Minor", reqCredits: 25, depts: ["STAT", "MATH"], deltas: [ { area: "science", addCredits: 5 } ] },
+  astrobio: { id: "astrobio", name: "Astrobiology Minor", reqCredits: 30, depts: ["ASTR", "ASTBIO", "ESS", "BIOL"] },
+  econ: { id: "econ", name: "Economics Minor", reqCredits: 30, depts: ["ECON"], deltas: [ { area: "social", addCredits: 10 } ] },
+  psych: { id: "psych", name: "Psychology Minor", reqCredits: 25, depts: ["PSYCH"], deltas: [ { area: "social", addCredits: 10 } ] },
+  philosophy: { id: "philosophy", name: "Philosophy Minor", reqCredits: 30, depts: ["PHIL"], deltas: [ { area: "arts", addCredits: 10 } ] },
+  english: { id: "english", name: "English Minor", reqCredits: 25, depts: ["ENGL"], deltas: [ { area: "arts", addCredits: 10 } ] },
+  history: { id: "history", name: "History Minor", reqCredits: 30, depts: ["HSTAA", "HIST", "HSTCMP", "HSTEU"], deltas: [ { area: "arts", addCredits: 10 } ] },
+  music: { id: "music", name: "Music Minor", reqCredits: 30, depts: ["MUSIC", "MUSEN", "MUSAP"], deltas: [ { area: "arts", addCredits: 5 } ] },
+  physics: { id: "physics", name: "Physics Minor", reqCredits: 30, depts: ["PHYS"], deltas: [ { area: "science", addCredits: 10 } ] },
+  chem: { id: "chem", name: "Chemistry Minor", reqCredits: 30, depts: ["CHEM"], deltas: [ { area: "science", addCredits: 10 } ] },
+  biology: { id: "biology", name: "Biology Minor", reqCredits: 30, depts: ["BIOL"], deltas: [ { area: "science", addCredits: 10 } ] },
+  geog: { id: "geog", name: "Geography Minor", reqCredits: 25, depts: ["GEOG"], deltas: [ { area: "social", addCredits: 5 } ] },
+  pols: { id: "pols", name: "Political Science Minor", reqCredits: 25, depts: ["POLS", "POL"], deltas: [ { area: "social", addCredits: 10 } ] },
+  comm: { id: "comm", name: "Communication Minor", reqCredits: 25, depts: ["COM"], deltas: [ { area: "arts", addCredits: 5 } ] },
+  hcde: { id: "hcde", name: "Human Centered Design & Eng. Minor", reqCredits: 26, depts: ["HCDE"] },
+  entre: { id: "entre", name: "Entrepreneurship Minor", reqCredits: 25, depts: ["ENTRE", "MGMT"] },
+  diversity: { id: "diversity", name: "Diversity Minor", reqCredits: 25, depts: ["AES", "GWSS", "CHID", "AIS"], deltas: [ { area: "diversity", addCredits: 10 } ] },
+  global: { id: "global", name: "Global Health Minor", reqCredits: 30, depts: ["GH"] },
+  spanish: { id: "spanish", name: "Spanish Minor", reqCredits: 25, depts: ["SPAN"], deltas: [ { area: "arts", addCredits: 5 } ] },
+  business: { id: "business", name: "Business (Entrepreneurship) Minor", reqCredits: 25, depts: ["ENTRE", "MGMT", "MKTG", "ACCTG", "FIN"] },
+  accounting: { id: "accounting", name: "Accounting Minor", reqCredits: 30, depts: ["ACCTG"] },
 };
 // Bulk minors (requirements resolve from DARS). Added to MINORS by name.
 `American Sign Language|Arabic|Architecture|Art History|Astronomy|Bioethics & Humanities|
@@ -373,7 +367,9 @@ export function genericProgram(entry) {
       { id: "ah", label: "Arts & Humanities — 20 cr", kind: "credits", area: "arts", needCredits: 20, courses: AH_POOL },
       { id: "ssc", label: "Social Sciences — 20 cr", kind: "credits", area: "social", needCredits: 20, courses: SSC_POOL },
       { id: "nsc", label: "Natural Sciences — 20 cr", kind: "credits", area: "science", needCredits: 20, courses: NSC_POOL },
-      { id: "major", label: `${entry.name.replace(/\s*\(B\.[A-Z.]+\)/, "")} — major courses`, kind: "info", note: "Department-specific requirements load from your DARS audit when you sync." },
+      // department coursework we don't model in detail — counts as remaining
+      // (its exact courses come from DARS), so major comparisons stay honest.
+      { id: "major", label: `${entry.name.replace(/\s*\(B\.[A-Z.]+\)/, "")} — major coursework`, kind: "credits", area: `major_${entry.id}`, needCredits: 65, courses: [] },
     ],
   };
 }

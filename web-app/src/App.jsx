@@ -3,7 +3,7 @@ import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, pars
 import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram } from "./data.js";
-import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress } from "./recommend.js";
+import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit } from "./recommend.js";
 import bgUrl from "./bg.jpg";
 
 // ---- quarter calendar (UW: Autumn, Winter, Spring, Summer) ------------------
@@ -603,7 +603,7 @@ function describeDelta(d) {
   if (d.addCount != null) return `+${d.addCount} ${AREA_NAME[d.area] || d.area} courses`;
   return "";
 }
-function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose }) {
+function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose, onCompare }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
   const majors = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle) || m.school.toLowerCase().includes(needle));
@@ -633,8 +633,96 @@ function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose }) {
           ))}
         </div>
         <div className="mm-foot">
-          <span className="mm-savenote">Changes apply live and save to your account.</span>
+          <button className="mm-compare" onClick={onCompare}>⚖ Compare programs</button>
           <button className="btn" onClick={onClose}>Save &amp; close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- Compare mode: line up multiple majors / minors side by side -----------
+function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose }) {
+  const [tab, setTab] = useState("majors");
+  const [q, setQ] = useState("");
+  const [majorSel, setMajorSel] = useState(() => [currentMajorId, "informatics"].filter((v, i, a) => v && a.indexOf(v) === i));
+  const [minorSel, setMinorSel] = useState(() => (currentMinorIds && currentMinorIds.length ? currentMinorIds.slice(0, 2) : ["datascience"]));
+
+  const exactCount = programs ? Object.keys(programs).length : 0;
+  const majorRes = majorSel.map((id) => {
+    const prog = resolveProgram(id);
+    const hit = findAudit(prog.name, programs, "major");
+    return hit ? compareFromAudit({ id, name: prog.name }, hit) : compareProgram(prog, completedSet, ipSet);
+  }).sort((a, b) => a.remaining - b.remaining);
+  const minorRes = minorSel.map((id) => {
+    const mn = MINORS[id];
+    const hit = findAudit(mn.name, programs, "minor");
+    if (hit) { const c = compareFromAudit({ id, name: mn.name }, hit); return { id, name: mn.name, reqCredits: c.total, have: c.earned, remaining: c.remaining, estimated: false, exact: true }; }
+    return compareMinor(mn, completedSet, ipSet);
+  }).sort((a, b) => a.remaining - b.remaining);
+  const needle = q.trim().toLowerCase();
+  const majorOpts = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle));
+  const minorOpts = Object.values(MINORS).filter((m) => !needle || m.name.toLowerCase().includes(needle));
+  const toggle = (arr, set, id) => set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+
+  return (
+    <div className="course-browser compare-view">
+      <div className="cb-top">
+        <div><div className="ds-eyebrow">Compare</div><h2>Compare majors &amp; minors</h2>
+          <p>Pick programs to line up — Liquid shows how much more you'd need for each, least-remaining first. {exactCount > 0
+            ? <>Programs you've run through DARS show <b>exact</b> per-category numbers; others are transcript estimates.</>
+            : <>Numbers are transcript estimates. Run each program in MyPlan's <b>Audit a different program</b> (with the extension on) for exact, per-category figures.</>}</p></div>
+        <button className="ds-close" onClick={onClose}>Close ✕</button>
+      </div>
+      <div className="cmp-work">
+        <aside className="cmp-pick island">
+          <div className="cmp-tabs"><button className={tab === "majors" ? "active" : ""} onClick={() => setTab("majors")}>Majors</button><button className={tab === "minors" ? "active" : ""} onClick={() => setTab("minors")}>Minors</button></div>
+          <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${tab}…`} />
+          <div className="cmp-pick-scroll">
+            {tab === "majors" ? majorOpts.map((m) => (
+              <label key={m.id} className={`mm-row ${majorSel.includes(m.id) ? "sel" : ""}`}>
+                <input type="checkbox" checked={majorSel.includes(m.id)} onChange={() => toggle(majorSel, setMajorSel, m.id)} />
+                <div className="mm-info"><b>{m.name}</b><span>{m.school}</span></div>
+              </label>
+            )) : minorOpts.map((m) => (
+              <label key={m.id} className={`mm-row ${minorSel.includes(m.id) ? "sel" : ""}`}>
+                <input type="checkbox" checked={minorSel.includes(m.id)} onChange={() => toggle(minorSel, setMinorSel, m.id)} />
+                <div className="mm-info"><b>{m.name}</b><span>{m.reqCredits} cr minor</span></div>
+              </label>
+            ))}
+          </div>
+        </aside>
+        <div className="cmp-results">
+          {tab === "majors" ? (
+            <div className="cmp-grid">
+              {majorRes.map((r, i) => (
+                <div key={r.id} className={`island cmp-card ${i === 0 ? "best" : ""}`}>
+                  {i === 0 && <div className="cmp-badge">Closest to done</div>}
+                  <div className="cmp-name">{r.name} {r.exact ? <span className="cmp-exact">✓ exact · DARS</span> : <span className="cmp-est">estimate</span>}</div>
+                  <div className="cmp-big"><b>{r.remaining}</b> cr left <span className="cmp-pct">· {r.pct}% done</span></div>
+                  <div className="bar"><div style={{ width: `${r.pct}%` }} /></div>
+                  <div className="cmp-cats">
+                    {r.cats.filter((c) => c.remaining > 0).sort((a, b) => b.remaining - a.remaining).slice(0, 6).map((c) => (
+                      <div key={c.label} className="cmp-cat"><span>{c.label}</span><b>{c.remaining} {c.unit === "cr" ? "cr" : "left"}</b></div>
+                    ))}
+                    {r.cats.every((c) => c.remaining <= 0) && <div className="cmp-cat done">All {r.exact ? "" : "modeled "}requirements met 🎉</div>}
+                  </div>
+                </div>
+              ))}
+              {majorRes.length === 0 && <div className="rb-empty">Select majors on the left to compare.</div>}
+            </div>
+          ) : (
+            <div className="cmp-minors">
+              {minorRes.map((r, i) => (
+                <div key={r.id} className={`island cmp-minor ${i === 0 ? "best" : ""}`}>
+                  <div className="cmp-minor-h"><b>{r.name}</b>{r.exact ? <span className="cmp-exact">✓ exact</span> : null}{i === 0 && <span className="cmp-badge sm">Closest</span>}</div>
+                  <div className="cmp-minor-nums"><span><b>{r.remaining}</b> cr left</span><span>{r.have}/{r.reqCredits} done{r.estimated ? " · est." : ""}</span></div>
+                  <div className="bar green"><div style={{ width: `${Math.round((r.have / r.reqCredits) * 100)}%` }} /></div>
+                </div>
+              ))}
+              {minorRes.length === 0 && <div className="rb-empty">Select minors on the left to compare.</div>}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -823,6 +911,7 @@ export default function App() {
   const [showMajors, setShowMajors] = useState(false);
   const [showDesign, setShowDesign] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [courseTerms, setCourseTerms] = useState({});
@@ -931,6 +1020,7 @@ export default function App() {
     { key: "planview", label: "Plan View", icon: I.cal, onClick: () => setView("plan") },
     { key: "catalog", label: "Catalog", icon: I.search, onClick: () => setView("catalog") },
     { key: "majors", label: "Majors", icon: I.grad, onClick: () => setShowMajors(true) },
+    { key: "compare", label: "Compare", icon: I.grad, onClick: () => setShowCompare(true) },
     { key: "add", label: "Add Class", icon: I.plus, onClick: () => setView("catalog") },
     { key: "auto", label: "Auto Plan", icon: I.spark, onClick: autoPlan },
   ];
@@ -993,7 +1083,11 @@ export default function App() {
         <MajorsMinors majorId={majorId} minorIds={minorIds}
           onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); }}
           onToggleMinor={(id) => setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])}
-          onClose={() => setShowMajors(false)} />
+          onClose={() => setShowMajors(false)} onCompare={() => { setShowMajors(false); setShowCompare(true); }} />
+      )}
+      {showCompare && (
+        <CompareView completedSet={completedSet} ipSet={ipSet} currentMajorId={majorId} currentMinorIds={minorIds}
+          programs={snapshot?.programs} onClose={() => setShowCompare(false)} />
       )}
       {showHandoff && (
         <HandoffModal token={token}
