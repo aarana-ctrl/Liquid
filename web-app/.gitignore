@@ -1,2 +1,8 @@
 .vercel
 .env*
+node_modules/
+dist/
+build/
+site*/
+vite.config.js.timestamp-*.mjs
+.DS_Store

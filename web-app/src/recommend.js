@@ -97,13 +97,13 @@ export function compareProgram(program, completedSet, ipSet) {
 // --- EXACT compare, straight from a captured DARS audit ---------------------
 // Given a program's stored DARS audit (from the extension), build the same
 // compare shape but with the real, per-category numbers DARS reported.
-const SKIP_REQ = /University requires|minimum of \d+ academic|Bachelor|Minimum (cumulative|graded)|Total credits|residence/i;
+const SKIP_REQ = /University requires|minimum of \d+ academic|^Bachelor|^Minor\b|\bMINOR \(|Minimum (cumulative|graded)|Total credits|in residence|^Catalog|GPA$|grade point/i;
 
 export function compareFromAudit(meta, audit) {
   const a = audit.audit || {};
-  const total = a.totalRequired || 180;
-  const earned = a.earned ?? 0;
-  const needs = a.needs ?? Math.max(0, total - earned);
+  const isMinor = audit.level === "minor";
+
+  // Full per-category breakdown straight from DARS (gen-ed + program-specific).
   const cats = (audit.requirements || [])
     .filter((r) => !SKIP_REQ.test(r.label) && (r.needsCr != null || r.needsCourses != null || r.earnedCr != null))
     .map((r) => {
@@ -111,13 +111,33 @@ export function compareFromAudit(meta, audit) {
       const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
       const have = (r.earnedCr || 0) + (r.ipCr || 0);
       const need = isCourses ? r.needsCourses : (have + (r.needsCr || 0));
-      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 70), need, remaining, unit: isCourses ? "courses" : "cr" };
+      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 80), need, remaining, unit: isCourses ? "courses" : "cr" };
     })
     .sort((x, y) => y.remaining - x.remaining);
+
+  // Remaining, split by unit, summed from the categories DARS actually listed.
+  const remCredits = cats.filter((c) => c.unit === "cr").reduce((s, c) => s + c.remaining, 0);
+  const remCourses = cats.filter((c) => c.unit === "courses").reduce((s, c) => s + c.remaining, 0);
+
+  let total, earned, remaining, pct;
+  if (isMinor) {
+    // The 180-credit headline is the whole degree, not the minor. Derive the
+    // minor's numbers from its own credit categories.
+    total = cats.filter((c) => c.unit === "cr").reduce((s, c) => s + (c.need || 0), 0)
+      || Math.max(1, (a.earned || 0) + (a.inProgress || 0) + (a.needs || 0));
+    remaining = remCredits;
+    earned = Math.max(0, total - remaining);
+    pct = total ? Math.round((earned / total) * 100) : 0;
+  } else {
+    total = a.totalRequired || 180;
+    earned = a.earned ?? 0;
+    remaining = a.needs ?? 0;
+    pct = Math.round((earned / total) * 100);
+  }
   return {
     id: meta.id, name: meta.name,
-    total, earned, remaining: needs, pct: Math.round((earned / total) * 100),
-    cats, exact: true, program: audit.program, catalogYear: audit.catalogYear,
+    total, earned, remaining, pct, remCredits, remCourses,
+    cats, exact: true, level: audit.level, program: audit.program, catalogYear: audit.catalogYear,
   };
 }
 

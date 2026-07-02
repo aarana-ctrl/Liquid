@@ -194,17 +194,39 @@ export const MINORS = {
   business: { id: "business", name: "Business (Entrepreneurship) Minor", reqCredits: 25, depts: ["ENTRE", "MGMT", "MKTG", "ACCTG", "FIN"] },
   accounting: { id: "accounting", name: "Accounting Minor", reqCredits: 30, depts: ["ACCTG"] },
 };
-// Bulk minors (requirements resolve from DARS). Added to MINORS by name.
-`American Sign Language|Arabic|Architecture|Art History|Astronomy|Bioethics & Humanities|
-Chinese|Cinema & Media Studies|Comparative Literature|Creative Writing|Dance|Data Science|
-Design|European Studies|French|Gender, Women & Sexuality Studies|German|Human Rights|
-Informatics|Italian|Japanese|Jewish Studies|Korean|Labor Studies|Latin American Studies|
-Law, Societies & Justice|Linguistics|Microbiology|Near Eastern Languages|Nutritional Sciences|
-Oceanography|Public Health|Quantitative Science|Russian|Scandinavian|Sociology|Sustainability|
-Urban Design & Planning`
+// Complete UW-Seattle minors list (advising.uw.edu/degree-overview/minors).
+// Exact requirements always come from DARS when the student audits the program;
+// this list makes every minor selectable in Compare, and any program run through
+// DARS is also auto-added with exact requirements (see CompareView).
+`Aeronautics & Astronautics|American Indian Studies|Anthropology|Applied Mathematics|
+Architecture|Art History|Atmospheric Sciences|Business Administration|Chemistry|Chinese|
+Classical Studies|Comparative History of Ideas|Comparative Religion|Computational Finance & Risk Management|
+Construction Management|Dance|Danish|Earth & Space Sciences|English|Environmental Public Health|
+Environmental Science & Terrestrial Resource Management|Environmental Studies|European Studies|
+Finnish|Gender, Women & Sexuality Studies|Geography|German Studies|Greek|History|Informatics|
+Japanese|Jewish Studies|Korean|Latin|Latin American & Caribbean Studies|Law, Societies & Justice|
+Linguistics|Marine Biology|Materials Science & Engineering|Mathematics|Microbiology|
+Middle Eastern Languages & Cultures|Music|Norwegian|Oceanography|Philosophy|Physics|
+Political Science|Real Estate|Scandinavian Studies|Slavic Languages & Literatures|
+South Asian Languages & Literature|Spanish|Statistics|Swedish|Acting|Aerospace Studies|
+Africa & the African Diaspora|American Sign Language|Architectural Studies|Arctic Studies|
+Baltic Studies|Bioethics & Humanities|Business|Classics & Ancient History|Climate Science|
+Comparative Islamic Studies|Computational Finance|Data Science|Design for Performance|
+Disability Studies|Diversity|DXARTS|Ecological Restoration|Education, Learning & Society|
+Entrepreneurship|Environmental Cultures & Values|Estonian|Ethics|French|Freshwater Science & Management|
+German Linguistics|Global Health|Hellenic Studies|History of Science|Human Rights|
+International Studies|Labor Studies|Latvian|Leadership|Lithuanian|Middle East Studies|
+Military Science|Naval Science|Neural Computation & Engineering|Nutritional Sciences|Paleobiology|
+Portuguese & Luso-Brazilian Studies|Public Policy|Quantitative Science|
+Russia, East Europe & Central Asia Studies|Russian Language|Russian Literature|Slavic Languages|
+Textual Studies & Digital Humanities|Theatre Studies|Urban Design & Planning|
+Urban Ecological Design|Writing`
   .split("|").map((s) => s.trim()).filter(Boolean).forEach((name) => {
     const id = "m_" + name.toLowerCase().replace(/[^a-z0-9]+/g, "").slice(0, 18);
-    if (!MINORS[id] && !Object.values(MINORS).some((m) => m.name === name + " Minor")) MINORS[id] = { id, name: name + " Minor" };
+    if (!MINORS[id] && !Object.values(MINORS).some((m) => m.name === name + " Minor")) {
+      // reqCredits/depts unknown until DARS audit → estimated flag; exact comes from DARS.
+      MINORS[id] = { id, name: name + " Minor", reqCredits: 30, estimated: true };
+    }
   });
 
 // ---------------------------------------------------------------------------

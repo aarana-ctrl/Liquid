@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+site*/
+
+# Vite temp files
+**/vite.config.js.timestamp-*.mjs
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor junk
+.DS_Store
+*.log

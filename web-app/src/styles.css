@@ -509,10 +509,13 @@ body {
 .cmp-exact { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--enrolled); background: rgba(95,208,168,0.14); border: 1px solid rgba(95,208,168,0.35); padding: 2px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
 .cmp-est { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; color: var(--text-dim); background: var(--glass-2); border: 1px solid var(--glass-brd); padding: 2px 7px; border-radius: 999px; margin-left: 6px; vertical-align: middle; }
 .cmp-big { font-size: 15px; margin-bottom: 8px; } .cmp-big b { font-size: 30px; font-weight: 800; } .cmp-pct { color: var(--text-dim); font-size: 13px; }
+.cmp-plus { font-size: 12.5px; font-weight: 700; color: var(--accent, #8b7bf0); }
 .cmp-cats { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
 .cmp-cat { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--text-dim); padding: 7px 10px; border-radius: 9px; background: var(--glass-2); border: 1px solid var(--glass-brd); }
 .cmp-cat b { color: var(--text); }
 .cmp-cat.done { color: var(--enrolled); justify-content: center; }
+.cmp-cat.met { color: var(--enrolled); justify-content: center; font-size: 11.5px; background: rgba(95,208,168,0.08); border-color: rgba(95,208,168,0.25); }
+.cmp-caveat { margin-top: 12px; font-size: 11px; line-height: 1.45; color: var(--text-dim); padding: 8px 10px; border-radius: 9px; background: rgba(224,165,59,0.08); border: 1px solid rgba(224,165,59,0.25); }
 .cmp-minors { display: flex; flex-direction: column; gap: 12px; max-width: 620px; }
 .cmp-minor { padding: 16px 18px; }
 .cmp-minor.best { box-shadow: inset 0 0 0 2px var(--enrolled), 0 22px 55px -28px var(--shadow); }

@@ -642,36 +642,88 @@ function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose, onCo
 }
 
 // ---- Compare mode: line up multiple majors / minors side by side -----------
+// One comparison "card" model, used for both majors and minors:
+// { id, name, remaining, total, earned, pct, cats:[{label,remaining,unit}], exact }
+function minorEstimateCard(mn, completedSet, ipSet) {
+  const c = compareMinor(mn, completedSet, ipSet);
+  return {
+    id: mn.id, name: mn.name, total: c.reqCredits, earned: c.have, remaining: c.remaining,
+    pct: c.reqCredits ? Math.round((c.have / c.reqCredits) * 100) : 0,
+    cats: [{ label: "Minor credits (dept. coursework)", need: c.reqCredits, remaining: c.remaining, unit: "cr" }],
+    exact: false, needsAudit: true,
+  };
+}
+
 function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose }) {
   const [tab, setTab] = useState("majors");
   const [q, setQ] = useState("");
+
+  // Programs the student has actually run through DARS, split by level. These are
+  // the exact ones — and any of them not already in the catalog is added so it's
+  // still selectable (this is how "anything DARS has" becomes comparable).
+  const captured = useMemo(() => {
+    const out = { major: [], minor: [] };
+    for (const key of Object.keys(programs || {})) {
+      const p = programs[key];
+      const lvl = p.level === "minor" ? "minor" : "major";
+      out[lvl].push({ id: "cap_" + key, name: p.program || key, school: "From your DARS audit", captured: true, audit: p });
+    }
+    return out;
+  }, [programs]);
+
   const [majorSel, setMajorSel] = useState(() => [currentMajorId, "informatics"].filter((v, i, a) => v && a.indexOf(v) === i));
   const [minorSel, setMinorSel] = useState(() => (currentMinorIds && currentMinorIds.length ? currentMinorIds.slice(0, 2) : ["datascience"]));
 
   const exactCount = programs ? Object.keys(programs).length : 0;
-  const majorRes = majorSel.map((id) => {
+
+  // does a catalog program have exact DARS data available?
+  const auditFor = (name, level) => findAudit(name, programs, level);
+
+  const resolveMajor = (id) => {
+    const cap = captured.major.find((c) => c.id === id);
+    if (cap) return compareFromAudit({ id, name: cap.name }, cap.audit);
     const prog = resolveProgram(id);
-    const hit = findAudit(prog.name, programs, "major");
-    return hit ? compareFromAudit({ id, name: prog.name }, hit) : compareProgram(prog, completedSet, ipSet);
-  }).sort((a, b) => a.remaining - b.remaining);
-  const minorRes = minorSel.map((id) => {
-    const mn = MINORS[id];
-    const hit = findAudit(mn.name, programs, "minor");
-    if (hit) { const c = compareFromAudit({ id, name: mn.name }, hit); return { id, name: mn.name, reqCredits: c.total, have: c.earned, remaining: c.remaining, estimated: false, exact: true }; }
-    return compareMinor(mn, completedSet, ipSet);
-  }).sort((a, b) => a.remaining - b.remaining);
+    const hit = auditFor(prog.name, "major");
+    return hit ? compareFromAudit({ id, name: prog.name }, hit) : { ...compareProgram(prog, completedSet, ipSet), exact: false, needsAudit: true };
+  };
+  const resolveMinor = (id) => {
+    const cap = captured.minor.find((c) => c.id === id);
+    if (cap) return compareFromAudit({ id, name: cap.name }, cap.audit);
+    const mn = MINORS[id]; if (!mn) return null;
+    const hit = auditFor(mn.name, "minor");
+    return hit ? compareFromAudit({ id, name: mn.name }, hit) : minorEstimateCard(mn, completedSet, ipSet);
+  };
+
+  // "Distance" to finish weighs remaining credits AND unmet required courses
+  // (a UW course ≈ 5 cr), so a program needing few credits but several specific
+  // courses isn't wrongly ranked as closer than one needing only a bit more.
+  const effort = (r) => (r.remaining || 0) + (r.remCourses || 0) * 5;
+  const majorRes = majorSel.map(resolveMajor).filter(Boolean).sort((a, b) => (b.exact - a.exact) || (effort(a) - effort(b)));
+  const minorRes = minorSel.map(resolveMinor).filter(Boolean).sort((a, b) => (b.exact - a.exact) || (effort(a) - effort(b)));
+  const results = tab === "majors" ? majorRes : minorRes;
+
   const needle = q.trim().toLowerCase();
-  const majorOpts = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle));
-  const minorOpts = Object.values(MINORS).filter((m) => !needle || m.name.toLowerCase().includes(needle));
-  const toggle = (arr, set, id) => set(arr.includes(id) ? arr.filter((x) => x !== id) : [...arr, id]);
+  const catalog = tab === "majors"
+    ? [...captured.major, ...MAJOR_CATALOG]
+    : [...captured.minor, ...Object.values(MINORS)];
+  const seen = new Set();
+  const opts = catalog.filter((m) => {
+    const k = m.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k);
+    return !needle || m.name.toLowerCase().includes(needle);
+  });
+  const sel = tab === "majors" ? majorSel : minorSel;
+  const setSel = tab === "majors" ? setMajorSel : setMinorSel;
+  const toggle = (id) => setSel(sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id]);
+  const hasExact = (m) => m.captured || !!auditFor(m.name, tab === "majors" ? "major" : "minor");
+  const unitBig = tab === "majors" ? "cr" : "cr";
 
   return (
     <div className="course-browser compare-view">
       <div className="cb-top">
         <div><div className="ds-eyebrow">Compare</div><h2>Compare majors &amp; minors</h2>
-          <p>Pick programs to line up — Liquid shows how much more you'd need for each, least-remaining first. {exactCount > 0
-            ? <>Programs you've run through DARS show <b>exact</b> per-category numbers; others are transcript estimates.</>
-            : <>Numbers are transcript estimates. Run each program in MyPlan's <b>Audit a different program</b> (with the extension on) for exact, per-category figures.</>}</p></div>
+          <p>Pick programs to line up — every requirement is shown so you can decide. {exactCount > 0
+            ? <>Programs you've run through DARS are marked <b>✓ exact</b> with real per-category numbers (including specific required courses). Others are transcript estimates — run their DARS audit for exact figures.</>
+            : <>Run each program in MyPlan's <b>Audit a different program</b> (extension on) and it appears here with exact requirements. Until then, numbers are transcript estimates.</>}</p></div>
         <button className="ds-close" onClick={onClose}>Close ✕</button>
       </div>
       <div className="cmp-work">
@@ -679,50 +731,38 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
           <div className="cmp-tabs"><button className={tab === "majors" ? "active" : ""} onClick={() => setTab("majors")}>Majors</button><button className={tab === "minors" ? "active" : ""} onClick={() => setTab("minors")}>Minors</button></div>
           <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={`Search ${tab}…`} />
           <div className="cmp-pick-scroll">
-            {tab === "majors" ? majorOpts.map((m) => (
-              <label key={m.id} className={`mm-row ${majorSel.includes(m.id) ? "sel" : ""}`}>
-                <input type="checkbox" checked={majorSel.includes(m.id)} onChange={() => toggle(majorSel, setMajorSel, m.id)} />
-                <div className="mm-info"><b>{m.name}</b><span>{m.school}</span></div>
-              </label>
-            )) : minorOpts.map((m) => (
-              <label key={m.id} className={`mm-row ${minorSel.includes(m.id) ? "sel" : ""}`}>
-                <input type="checkbox" checked={minorSel.includes(m.id)} onChange={() => toggle(minorSel, setMinorSel, m.id)} />
-                <div className="mm-info"><b>{m.name}</b><span>{m.reqCredits} cr minor</span></div>
+            {opts.map((m) => (
+              <label key={m.id} className={`mm-row ${sel.includes(m.id) ? "sel" : ""}`}>
+                <input type="checkbox" checked={sel.includes(m.id)} onChange={() => toggle(m.id)} />
+                <div className="mm-info"><b>{m.name}</b><span>{hasExact(m) ? "✓ exact from DARS" : (m.school || (m.reqCredits ? m.reqCredits + " cr minor" : "estimate"))}</span></div>
               </label>
             ))}
           </div>
         </aside>
         <div className="cmp-results">
-          {tab === "majors" ? (
-            <div className="cmp-grid">
-              {majorRes.map((r, i) => (
+          <div className="cmp-grid">
+            {results.map((r, i) => {
+              const open = r.cats.filter((c) => c.remaining > 0).sort((a, b) => b.remaining - a.remaining);
+              const met = r.cats.filter((c) => c.remaining <= 0);
+              return (
                 <div key={r.id} className={`island cmp-card ${i === 0 ? "best" : ""}`}>
-                  {i === 0 && <div className="cmp-badge">Closest to done</div>}
+                  {i === 0 && results.length > 1 && <div className="cmp-badge">Closest to done</div>}
                   <div className="cmp-name">{r.name} {r.exact ? <span className="cmp-exact">✓ exact · DARS</span> : <span className="cmp-est">estimate</span>}</div>
-                  <div className="cmp-big"><b>{r.remaining}</b> cr left <span className="cmp-pct">· {r.pct}% done</span></div>
-                  <div className="bar"><div style={{ width: `${r.pct}%` }} /></div>
+                  <div className="cmp-big"><b>{r.remaining}</b> {unitBig} left{r.remCourses > 0 ? <> <span className="cmp-plus">+ {r.remCourses} required course{r.remCourses > 1 ? "s" : ""}</span></> : null} <span className="cmp-pct">· {r.pct}% done</span></div>
+                  <div className="bar"><div style={{ width: `${Math.min(100, r.pct)}%` }} /></div>
                   <div className="cmp-cats">
-                    {r.cats.filter((c) => c.remaining > 0).sort((a, b) => b.remaining - a.remaining).slice(0, 6).map((c) => (
-                      <div key={c.label} className="cmp-cat"><span>{c.label}</span><b>{c.remaining} {c.unit === "cr" ? "cr" : "left"}</b></div>
+                    {open.map((c, j) => (
+                      <div key={c.label + j} className="cmp-cat"><span>{c.label}</span><b>{c.remaining}{c.unit === "cr" ? " cr" : c.unit === "courses" ? " courses" : ""}</b></div>
                     ))}
-                    {r.cats.every((c) => c.remaining <= 0) && <div className="cmp-cat done">All {r.exact ? "" : "modeled "}requirements met 🎉</div>}
+                    {open.length === 0 && <div className="cmp-cat done">All requirements met 🎉</div>}
+                    {met.length > 0 && open.length > 0 && <div className="cmp-cat met">✓ {met.length} requirement{met.length > 1 ? "s" : ""} already satisfied</div>}
                   </div>
+                  {r.needsAudit && <div className="cmp-caveat">Estimate — specific required courses aren't modeled. Run this program's DARS audit for exact requirements.</div>}
                 </div>
-              ))}
-              {majorRes.length === 0 && <div className="rb-empty">Select majors on the left to compare.</div>}
-            </div>
-          ) : (
-            <div className="cmp-minors">
-              {minorRes.map((r, i) => (
-                <div key={r.id} className={`island cmp-minor ${i === 0 ? "best" : ""}`}>
-                  <div className="cmp-minor-h"><b>{r.name}</b>{r.exact ? <span className="cmp-exact">✓ exact</span> : null}{i === 0 && <span className="cmp-badge sm">Closest</span>}</div>
-                  <div className="cmp-minor-nums"><span><b>{r.remaining}</b> cr left</span><span>{r.have}/{r.reqCredits} done{r.estimated ? " · est." : ""}</span></div>
-                  <div className="bar green"><div style={{ width: `${Math.round((r.have / r.reqCredits) * 100)}%` }} /></div>
-                </div>
-              ))}
-              {minorRes.length === 0 && <div className="rb-empty">Select minors on the left to compare.</div>}
-            </div>
-          )}
+              );
+            })}
+            {results.length === 0 && <div className="rb-empty">Select {tab} on the left to compare.</div>}
+          </div>
         </div>
       </div>
     </div>

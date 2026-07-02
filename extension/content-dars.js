@@ -48,8 +48,12 @@
         toast("✓ " + programName(text) + " synced to Liquid" + (n ? ` — ${n} program${n > 1 ? "s" : ""} captured for Compare.` : "."), true);
       } else if (resp && resp.error === "not-connected") {
         toast("Open Liquid and sign in once, then revisit this page.", false);
+      } else if (resp && resp.status === 401) {
+        toast("Liquid: your session expired. Sign in to Liquid again, then retry.", false);
+      } else if (resp && (resp.error === "fetch" || resp.detail)) {
+        toast("Liquid sync failed — " + (resp.detail || "backend unreachable") + (resp.api ? " (" + resp.api + ")" : "") + ". Open the popup → Test connection.", false);
       } else {
-        toast("Liquid sync failed. Try the popup → Sync now.", false);
+        toast("Liquid sync failed. Open the popup → Test connection.", false);
       }
     });
   }

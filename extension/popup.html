@@ -3,19 +3,26 @@
 <head>
   <meta charset="utf-8" />
   <style>
-    body { width: 260px; margin: 0; font: 13px -apple-system, system-ui, sans-serif; color: #eef0fb;
+    body { width: 270px; margin: 0; font: 13px -apple-system, system-ui, sans-serif; color: #eef0fb;
       background: linear-gradient(160deg, #141a3a, #0a0e22); padding: 16px; }
     .logo { width: 40px; height: 40px; border-radius: 50%; margin: 0 auto 10px;
       background: radial-gradient(circle at 36% 32%, #fff, #cfd3ff 16%, #9a8cf0 44%, #6a59c8 72%, #3a2f80 100%); }
     h1 { font-size: 15px; text-align: center; margin: 0 0 2px; }
     .sub { text-align: center; font-size: 11px; color: #9aa2c6; margin: 0 0 14px; }
     .status { display: flex; align-items: center; gap: 7px; font-size: 12px; padding: 8px 10px; border-radius: 10px;
-      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); margin-bottom: 10px; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; }
-    .on { background: #18b083; } .off { background: #6b7196; }
+      background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); margin-bottom: 6px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+    .on { background: #18b083; } .off { background: #6b7196; } .warn { background: #e0a53b; }
+    #testResult { font-size: 11px; color: #9aa2c6; margin: 0 0 10px; line-height: 1.4; min-height: 14px; }
+    #testResult.bad { color: #ff9a9a; } #testResult.good { color: #7fe0c0; }
     button { width: 100%; border: none; border-radius: 10px; padding: 10px; font-size: 13px; font-weight: 600; color: #fff; cursor: pointer;
       background: linear-gradient(120deg, #8b7bf0, #6aa8ff); margin-bottom: 8px; }
-    a.link { display: block; text-align: center; color: #6aa8ff; font-size: 12px; text-decoration: none; }
+    button.ghost { background: rgba(255,255,255,.08); }
+    a.link { display: block; text-align: center; color: #6aa8ff; font-size: 12px; text-decoration: none; margin-bottom: 10px; }
+    details { margin-top: 4px; } summary { font-size: 11px; color: #9aa2c6; cursor: pointer; }
+    .field { margin-top: 8px; }
+    input { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid rgba(255,255,255,.16);
+      background: rgba(0,0,0,.25); color: #eef0fb; padding: 8px; font-size: 12px; margin-bottom: 6px; }
     .note { font-size: 10.5px; color: #6b7196; margin-top: 10px; line-height: 1.5; text-align: center; }
   </style>
 </head>
@@ -24,10 +31,20 @@
   <h1>Liquid Sync</h1>
   <p class="sub">Auto-imports every DARS audit you run</p>
   <div class="status"><span id="dot" class="dot off"></span><span id="statusText">Checking…</span></div>
+  <p id="testResult"></p>
+  <button id="test" class="ghost">Test connection</button>
   <button id="open">Open my DARS audit</button>
-  <button id="sync" style="background: rgba(255,255,255,.08);">Sync now (on DARS page)</button>
+  <button id="sync" class="ghost">Sync now (on DARS page)</button>
   <a class="link" id="app" href="#" target="_blank">Open Liquid</a>
-  <p class="note">Sign in to Liquid once so the extension is connected. Then open your DARS audit — it syncs automatically. For exact Compare numbers, use <b>Audit a different program</b> in MyPlan to run each major/minor you want to compare; each one is captured as you view it.</p>
+  <details>
+    <summary>Advanced: set backend URL</summary>
+    <div class="field">
+      <input id="apiInput" placeholder="https://liquid-planner-api.onrender.com" />
+      <button id="saveApi">Save &amp; test</button>
+      <p class="note" style="margin-top:2px">Only needed if the app was built pointing at the wrong backend. Leave blank to use the app's own setting.</p>
+    </div>
+  </details>
+  <p class="note">Sign in to Liquid once so the extension is connected. Then open your DARS audit — it syncs automatically. For exact Compare numbers, run each program via <b>Audit a different program</b>.</p>
   <script src="popup.js"></script>
 </body>
 </html>
