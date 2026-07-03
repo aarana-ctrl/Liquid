@@ -798,6 +798,11 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
   const totalRemaining = Object.values(remainingMap).reduce((s, r) => s + (r.kind === "credits" ? r.remaining : 0), 0);
   const [viewMore, setViewMore] = useState(null);
   const [openDesc, setOpenDesc] = useState(null);
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   return (
     <div className="design-studio">
       <div className="ds-inner">
@@ -805,7 +810,7 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
           <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · add courses across your quarters — {totalRemaining} gen-ed cr left</p></div>
           <div className="ds-actions">
             <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>
-            <button className="ds-close" onClick={onClose}>Close ✕</button>
+            <div className="ds-hint">← Move to the left edge for the menu · Home to go back</div>
           </div>
         </div>
         <div className="ds-work">
@@ -1070,8 +1075,9 @@ export default function App() {
       <Sky />
       <div className="dock-hotzone" aria-hidden />
       <div className={`dock island ${showDesign ? "tucked" : ""}`}>
-        <button className={view === "plan" ? "active" : ""} onClick={() => setView("plan")} title="Plan">{I.home}</button>
-        <button className={view === "catalog" ? "active" : ""} onClick={() => setView("catalog")} title="Catalog">{I.search}</button>
+        <button className={view === "plan" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("plan"); }} title="Home">{I.home}</button>
+        <button className={view === "catalog" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("catalog"); }} title="Catalog">{I.search}</button>
+        <button className={showDesign ? "active" : ""} onClick={() => setShowDesign(true)} title="Design Studio">{I.pen}</button>
         <div className="sep" />
         <button className={showAccount ? "active" : ""} onClick={() => setShowAccount(true)} title="Account">{I.user}</button>
       </div>
