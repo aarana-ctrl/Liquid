@@ -401,6 +401,44 @@ export function resolveProgram(majorId) {
   return entry ? genericProgram(entry) : MAJORS.cs;
 }
 
+// --- Comprehensive catalog from DARS (scraped by the extension) --------------
+const _dynSlug = (name) => "z" + String(name).toLowerCase().replace(/[^a-z0-9]+/g, "");
+// Dedup key keeps the degree type so "Economics (BA)" and "Economics (BS)" stay
+// distinct, while "(B.A.)" (built-in) and "(BA)" (DARS) collapse to the same one.
+const _normName = (s) => {
+  const str = String(s || "").toLowerCase();
+  const deg = (str.match(/\(([^)]*)\)/)?.[1] || "").replace(/[^a-z]/g, ""); // ba, bs, bod, bla…
+  const base = str.replace(/\([^)]*\)/g, " ").replace(/\b(minor|major)\b/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+  return base + "|" + deg;
+};
+
+// Make sure a (possibly dynamic) major exists in the catalog — used when a saved
+// plan references a DARS-scraped major before the catalog has loaded.
+export function registerMajor(id, name) {
+  if (!id || MAJOR_CATALOG.some((m) => m.id === id)) return;
+  MAJOR_CATALOG.push({ id, name: name || id, school: "UW-Seattle", dynamic: true });
+}
+
+// Merge the full DARS program list into the catalog (idempotent, dedup by name).
+export function mergeCatalog({ majors = [], minors = [] } = {}) {
+  const haveMajor = new Set(MAJOR_CATALOG.map((m) => _normName(m.name)));
+  for (const name of majors) {
+    const key = _normName(name);
+    if (!key || haveMajor.has(key)) continue;
+    haveMajor.add(key);
+    MAJOR_CATALOG.push({ id: _dynSlug(name), name: String(name).trim(), school: "UW-Seattle · DARS", dynamic: true });
+  }
+  const haveMinor = new Set(Object.values(MINORS).map((m) => _normName(m.name)));
+  for (const name of minors) {
+    const key = _normName(name);
+    if (!key || haveMinor.has(key)) continue;
+    haveMinor.add(key);
+    const id = "m" + _dynSlug(name);
+    MINORS[id] = { id, name: /minor$/i.test(name) ? String(name).trim() : String(name).trim() + " Minor", reqCredits: 30, estimated: true, dynamic: true };
+  }
+  return { majors: MAJOR_CATALOG.length, minors: Object.keys(MINORS).length };
+}
+
 // Merge selected minors into a major's requirements to form the active program.
 function relabel(r) {
   if (r.kind === "credits") r.label = r.label.replace(/\d+ cr/, `${r.needCredits} cr`);

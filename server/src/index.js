@@ -85,9 +85,23 @@ app.get("/api/me", auth, async (req, res) => {
 // ---- plan (saved server-side → syncs across devices) -----------------------
 app.get("/api/plan", auth, async (req, res) => res.json(await getPlan(req.user.sub)));
 app.put("/api/plan", auth, async (req, res) => {
-  const { chosen, schedule, completed, inProgress, majorId, minorIds, bookmarks } = req.body || {};
+  const { chosen, schedule, completed, inProgress, majorId, majorName, minorIds, bookmarks } = req.body || {};
   const prev = (await getPlan(req.user.sub)) || {};
-  res.json(await savePlan(req.user.sub, { ...prev, chosen, schedule, completed, inProgress, majorId, minorIds, bookmarks }));
+  res.json(await savePlan(req.user.sub, { ...prev, chosen, schedule, completed, inProgress, majorId, majorName, minorIds, bookmarks }));
+});
+
+// ---- Program catalog (the full UW major/minor list, scraped by the extension
+// from the live DARS picker so it's always comprehensive and current) --------
+app.get("/api/programs", cors({ origin: true }), async (req, res) => {
+  const c = await getSnapshot("__catalog__");
+  res.json({ majors: c?.majors || [], minors: c?.minors || [], updatedAt: c?.updatedAt || null });
+});
+app.options("/api/programs", cors({ origin: true }));
+app.post("/api/programs", cors({ origin: true }), auth, async (req, res) => {
+  const { majors, minors } = req.body || {};
+  if (!Array.isArray(majors) || !Array.isArray(minors)) return res.status(400).json({ error: "majors and minors arrays required" });
+  await saveSnapshot("__catalog__", { majors: majors.slice(0, 600), minors: minors.slice(0, 400), updatedAt: new Date().toISOString() });
+  res.json({ ok: true, majors: majors.length, minors: minors.length });
 });
 
 // ---- Auto-audit queue ------------------------------------------------------

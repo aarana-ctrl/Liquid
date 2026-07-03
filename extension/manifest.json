@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Liquid — MyPlan Sync",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "Automatically imports your UW DARS degree audits into Liquid — every program you run through DARS is captured for exact, per-category Compare. No copy/paste.",
   "permissions": ["storage", "activeTab", "scripting"],
   "host_permissions": [

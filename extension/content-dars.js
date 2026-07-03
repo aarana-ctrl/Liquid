@@ -128,6 +128,34 @@
     return true;
   }
 
+  // Scrape the FULL major + minor program lists from the picker (non-destructive
+  // — never clicks "Audit Your Degree") and push them to the backend so the app's
+  // Majors & Minors list is comprehensive and matches DARS exactly.
+  let catalogDone = false;
+  async function syncCatalog() {
+    if (catalogDone) return;
+    try {
+      if (!(await openPicker())) return;
+      const type = document.querySelector("#degreeTypeSelector");
+      if (!type) return;
+      const majorVal = [...type.options].find((o) => /major/i.test(o.textContent))?.value;
+      const minorVal = [...type.options].find((o) => /minor/i.test(o.textContent))?.value;
+      const readOptions = () => [...(document.querySelector("#programSelector")?.options || [])]
+        .map((o) => o.textContent.trim()).filter((t) => t && !/select a program/i.test(t));
+      const original = type.value;
+      setNativeSelect(type, majorVal); await sleep(1200);
+      const majors = readOptions();
+      setNativeSelect(type, minorVal); await sleep(1200);
+      const minors = readOptions();
+      setNativeSelect(type, original); // restore
+      if (majors.length && minors.length) {
+        chrome.runtime.sendMessage({ type: "lp-catalog", majors, minors }, (r) => {
+          if (r && r.ok) { catalogDone = true; toast("✓ Synced " + majors.length + " majors + " + minors.length + " minors to Liquid.", true); }
+        });
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
   let queueRunning = false;
   async function processQueue(manual) {
     if (queueRunning) return;
@@ -151,6 +179,8 @@
   setTimeout(() => doImport(false), 2500);
   // Once the current audit is captured, process any programs the app queued.
   setTimeout(() => processQueue(false), 7000);
+  // Sync the full program list to the app (only when not busy auto-auditing).
+  setTimeout(() => { if (!queueRunning) syncCatalog(); }, 12000);
 
   // Re-check when the page content mutates (running a different program's audit
   // rewrites the same page), debounced. This is what captures each program.

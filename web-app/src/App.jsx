@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "react";
 import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript, getDesc } from "./data.js";
 import { mockSignIn } from "./auth.js";
-import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit } from "./api.js";
-import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram } from "./data.js";
+import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms } from "./api.js";
+import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram, mergeCatalog, registerMajor } from "./data.js";
 import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit } from "./recommend.js";
 import bgUrl from "./bg.jpg";
 
@@ -1120,6 +1120,7 @@ export default function App() {
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
+  const [catalogVersion, setCatalogVersion] = useState(0); // bumps when DARS catalog merges in
   const [courseTerms, setCourseTerms] = useState({});
   const didAutoSync = useRef(false);
   const toggleBookmark = (b) => setBookmarks((p) => p.some((x) => x.id === b.id && x.level === b.level)
@@ -1149,6 +1150,17 @@ export default function App() {
   }, []);
   useEffect(() => { try { if (user && token) localStorage.setItem("lp_session", JSON.stringify({ user, token })); } catch { /* ignore */ } }, [user, token]);
 
+  // Load the comprehensive UW program catalog (scraped from DARS by the extension)
+  // and merge it into the pickers so every major/minor variant is selectable.
+  useEffect(() => {
+    getPrograms().then((c) => {
+      if (c && ((c.majors && c.majors.length) || (c.minors && c.minors.length))) {
+        mergeCatalog({ majors: c.majors, minors: c.minors });
+        setCatalogVersion((v) => v + 1);
+      }
+    }).catch(() => {});
+  }, [user]);
+
   useEffect(() => {
     if (!token) return;
     (async () => {
@@ -1161,7 +1173,7 @@ export default function App() {
           const clean = {}; for (const k in plan.schedule) { const v = plan.schedule[k]; if (typeof v === "number" && v > 5000) clean[k] = v; }
           if (Object.keys(clean).length) setSchedule(clean);
         }
-        if (plan.majorId && (MAJORS[plan.majorId] || MAJOR_CATALOG.some((m) => m.id === plan.majorId))) setMajorId(plan.majorId);
+        if (plan.majorId) { registerMajor(plan.majorId, plan.majorName); setMajorId(plan.majorId); }
         if (Array.isArray(plan.minorIds)) setMinorIds(plan.minorIds);
         if (Array.isArray(plan.bookmarks)) setBookmarks(plan.bookmarks);
       }
@@ -1171,7 +1183,8 @@ export default function App() {
   }, [token]);
   useEffect(() => {
     if (!token || !loaded) return;
-    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks }), 600);
+    const majorName = (MAJOR_CATALOG.find((m) => m.id === majorId) || {}).name || "";
+    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, majorName, minorIds, bookmarks }), 600);
     return () => clearTimeout(t);
   }, [token, loaded, chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks]);
 

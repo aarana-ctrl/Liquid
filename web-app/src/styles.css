@@ -10,17 +10,17 @@
   --bg-2: #e7ebf3;
 
   /* translucent liquid glass — light bends through from the photo behind */
-  --glass: rgba(255, 255, 255, 0.07);
-  --glass-2: rgba(255, 255, 255, 0.12);
-  --glass-brd: rgba(255, 255, 255, 0.30);
+  --glass: rgba(255, 255, 255, 0.09);
+  --glass-2: rgba(255, 255, 255, 0.14);
+  --glass-brd: rgba(255, 255, 255, 0.32);
   --glass-hi: rgba(255, 255, 255, 0.55);
   --shadow: rgba(0, 0, 0, 0.45);
-  --track: rgba(255, 255, 255, 0.14);
-  --field: rgba(255, 255, 255, 0.1);
+  --track: rgba(255, 255, 255, 0.16);
+  --field: rgba(255, 255, 255, 0.12);
 
-  --text: #eef1fb;
-  --text-dim: #c3c9e2;
-  --text-faint: #8b93b8;
+  --text: #f2f4fd;
+  --text-dim: #d6dbf0;
+  --text-faint: #a9b0d2;
   --edge: rgba(200, 210, 240, 0.4);
 
   --accent: #8b7bf0;
@@ -52,8 +52,13 @@ body {
     linear-gradient(160deg, #eaf0fb 0%, #e6ecf8 100%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0.1px;
   overflow: hidden;
 }
+/* Crisper text over translucent glass + the photo behind it, for readability. */
+h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 10, 26, 0.35); }
 
 /* photo canvas behind the glass */
 .bg-photo { position: fixed; inset: 0; z-index: 0; background-size: cover; background-position: center; }
@@ -207,6 +212,11 @@ body {
 .mm-search { width: 100%; margin-bottom: 14px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--glass-brd); background: var(--field); color: var(--text); font-size: 13.5px; outline: none; transition: border-color .2s ease, box-shadow .2s ease; }
 .mm-search::placeholder { color: var(--text-faint); }
 .mm-search:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(107,92,224,0.15); }
+.mm-compare { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; cursor: pointer;
+  border: 1px solid rgba(139,123,240,0.55); background: linear-gradient(135deg, rgba(139,123,240,0.28), rgba(106,168,255,0.22));
+  color: var(--text); border-radius: 12px; padding: 11px 18px; font-size: 13.5px; font-weight: 650;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); transition: background .16s ease, border-color .16s ease, transform .12s ease; }
+.mm-compare:hover { background: linear-gradient(135deg, rgba(139,123,240,0.42), rgba(106,168,255,0.34)); border-color: var(--accent); transform: translateY(-1px); }
 .mm-row { transition: box-shadow .2s ease, background .2s ease, transform .2s ease; }
 .mm-row:hover { transform: translateX(2px); background: var(--glass); }
 
@@ -478,8 +488,8 @@ body {
 .dp-row.sel { background: rgba(139,123,240,0.16); border-color: rgba(139,123,240,0.5); }
 .dp-row input { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
 .dp-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.dp-info b { font-size: 14px; line-height: 1.25; }
-.dp-info span { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+.dp-info b { font-size: 14.5px; font-weight: 650; line-height: 1.3; }
+.dp-info span { font-size: 12.5px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
 .dp-row .dp-star { margin-left: auto; }
 .dp-star { flex: none; border: none; background: transparent; color: var(--text-faint); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px; border-radius: 8px; transition: color 0.15s, transform 0.15s; }
 .dp-star:hover { color: var(--accent); transform: scale(1.15); }

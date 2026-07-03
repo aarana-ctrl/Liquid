@@ -69,6 +69,10 @@ export async function getAuditQueue(token) {
   const r = await fetch(`${API_BASE}/api/audit-queue`, { headers: authHeaders(token) });
   return r.ok ? r.json() : null;
 }
+// Full UW program catalog (majors + minors) scraped by the extension from DARS.
+export async function getPrograms() {
+  try { const r = await fetch(`${API_BASE}/api/programs`); return r.ok ? r.json() : null; } catch { return null; }
+}
 
 // ---- MyPlan handoff (bookmarklet import) ----
 export async function startImport(token) {

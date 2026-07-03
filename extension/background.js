@@ -50,6 +50,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "lp-catalog") {
+    (async () => {
+      const s = await readStore();
+      const api = baseUrl(s);
+      if (!s.token || !api) return sendResponse({ ok: false, error: "not-connected" });
+      try {
+        const r = await fetch(api + "/api/programs", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.token }, body: JSON.stringify({ majors: msg.majors, minors: msg.minors }) });
+        sendResponse({ ok: r.ok });
+      } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
+    })();
+    return true;
+  }
+
   if (msg?.type === "lp-queue") {
     (async () => {
       const s = await readStore();
