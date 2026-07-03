@@ -60,6 +60,10 @@ body {
 .bg-tint { position: fixed; inset: 0; z-index: 0; background: linear-gradient(180deg, rgba(8,12,30,0.42) 0%, rgba(8,12,30,0.5) 55%, rgba(8,12,30,0.62) 100%); }
 /* faint drifting color glow behind the glass */
 .canvas { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+
+/* Seamless scrolling — hide scrollbars everywhere but keep scroll behavior */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .blob { position: absolute; border-radius: 50%; filter: blur(72px); opacity: 0.4; mix-blend-mode: screen; }
 .blob.b1 { width: 540px; height: 540px; background: #7ea2ff; top: -6%; left: 4%; animation: drift1 24s ease-in-out infinite; }
 .blob.b2 { width: 460px; height: 460px; background: #57d6b6; top: 30%; right: 6%; animation: drift2 28s ease-in-out infinite; }
@@ -443,10 +447,45 @@ body {
 .ds-board .plan { flex: 1 1 auto; }
 .ds-rail { min-height: 0; display: flex; flex-direction: column; padding: 16px; }
 .ds-rail-h { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; font-size: 14px; font-weight: 700; margin-bottom: 12px; }
-.ds-rail-h span { font-size: 11.5px; font-weight: 600; color: var(--accent); }
+.ds-rail-right { display: flex; align-items: center; gap: 8px; }
+.ds-rail-left { font-size: 11.5px; font-weight: 600; color: var(--accent); }
+.ds-rail-collapse { width: 26px; height: 26px; border-radius: 8px; border: 1px solid var(--glass-brd); background: var(--glass-2); color: var(--text-dim); cursor: pointer; font-size: 13px; line-height: 1; }
+.ds-rail-collapse:hover { color: var(--text); }
 .ds-rail-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .ds-railcard { margin-bottom: 16px; }
 .ds-done-sm { font-size: 12.5px; color: var(--text-dim); padding: 10px; }
+.ds-work.rail-collapsed { grid-template-columns: 1fr; }
+.ds-rail-reopen { position: absolute; right: 40px; top: 50%; transform: translateY(-50%); z-index: 3; border: 1px solid var(--glass-brd); background: var(--glass-2); color: var(--text); border-radius: 12px 0 0 12px; padding: 14px 10px; font-size: 12px; font-weight: 700; cursor: pointer; writing-mode: vertical-rl; }
+.ds-rail-reopen:hover { background: var(--glass); }
+
+/* Design Studio segmented tabs (Plan / Majors & Minors / Compare) */
+.ds-modes { flex: 0 0 auto; display: inline-flex; gap: 4px; padding: 4px; margin-bottom: 16px; border-radius: 14px; background: var(--glass-2); border: 1px solid var(--glass-brd); align-self: flex-start; }
+.ds-modes button { border: none; background: transparent; color: var(--text-dim); font-size: 13.5px; font-weight: 600; padding: 8px 18px; border-radius: 11px; cursor: pointer; transition: background 0.18s, color 0.18s; }
+.ds-modes button:hover { color: var(--text); }
+.ds-modes button.active { background: var(--accent); color: #fff; }
+
+/* Embedded Majors & Minors picker — readable two-column layout */
+.ds-programs { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
+.dp-bar { flex: 0 0 auto; display: flex; gap: 12px; align-items: center; }
+.dp-bar .mm-search { flex: 1 1 auto; margin: 0; }
+.dp-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.dp-col { min-height: 0; display: flex; flex-direction: column; padding: 16px 8px 10px 16px; }
+.dp-col-h { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin-bottom: 12px; padding-right: 8px; }
+.dp-note { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--text-faint); }
+.dp-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-right: 8px; display: flex; flex-direction: column; gap: 4px; }
+.dp-row { display: flex; align-items: center; gap: 12px; padding: 12px 12px; border-radius: 12px; cursor: pointer; border: 1px solid transparent; transition: background 0.15s, border-color 0.15s; }
+.dp-row:hover { background: var(--glass-2); }
+.dp-row.sel { background: rgba(139,123,240,0.16); border-color: rgba(139,123,240,0.5); }
+.dp-row input { width: 17px; height: 17px; flex: none; accent-color: var(--accent); }
+.dp-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dp-info b { font-size: 14px; line-height: 1.25; }
+.dp-info span { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1000px) { .dp-cols { grid-template-columns: 1fr; } }
+
+/* Compare embedded inside the studio (in-flow rather than fixed overlay) */
+.course-browser.embedded { position: static; inset: auto; padding: 0; height: auto; flex: 1 1 auto; min-height: 0; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.course-browser.embedded .cb-top { padding-top: 0; }
+
 @media (max-width: 1080px) { .ds-work { grid-template-columns: 1fr; } }
 .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 18px; }
 .ds-card { padding: 18px; }

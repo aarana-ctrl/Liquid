@@ -654,7 +654,7 @@ function minorEstimateCard(mn, completedSet, ipSet) {
   };
 }
 
-function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose }) {
+function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded }) {
   const [tab, setTab] = useState("majors");
   const [q, setQ] = useState("");
 
@@ -718,13 +718,13 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
   const unitBig = tab === "majors" ? "cr" : "cr";
 
   return (
-    <div className="course-browser compare-view">
+    <div className={`course-browser compare-view ${embedded ? "embedded" : ""}`}>
       <div className="cb-top">
         <div><div className="ds-eyebrow">Compare</div><h2>Compare majors &amp; minors</h2>
           <p>Pick programs to line up — every requirement is shown so you can decide. {exactCount > 0
             ? <>Programs you've run through DARS are marked <b>✓ exact</b> with real per-category numbers (including specific required courses). Others are transcript estimates — run their DARS audit for exact figures.</>
             : <>Run each program in MyPlan's <b>Audit a different program</b> (extension on) and it appears here with exact requirements. Until then, numbers are transcript estimates.</>}</p></div>
-        <button className="ds-close" onClick={onClose}>Close ✕</button>
+        {!embedded && <button className="ds-close" onClick={onClose}>Close ✕</button>}
       </div>
       <div className="cmp-work">
         <aside className="cmp-pick island">
@@ -791,66 +791,148 @@ function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
 }
 
 // ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
-function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose }) {
+function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose,
+  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
   const totalRemaining = Object.values(remainingMap).reduce((s, r) => s + (r.kind === "credits" ? r.remaining : 0), 0);
   const [viewMore, setViewMore] = useState(null);
   const [openDesc, setOpenDesc] = useState(null);
+  const [railOpen, setRailOpen] = useState(true);
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  const subtitle = mode === "programs"
+    ? "Choose your major, add minors or a double major — your plan re-checks instantly."
+    : mode === "compare"
+      ? "Line up majors & minors side by side and decide what to pursue."
+      : `${program.name} · add courses across your quarters — ${totalRemaining} gen-ed cr left`;
+
   return (
     <div className="design-studio">
       <div className="ds-inner">
         <div className="ds-topbar">
-          <div><div className="ds-eyebrow">Design Studio</div><h2>Design your path</h2><p>{program.name} · add courses across your quarters — {totalRemaining} gen-ed cr left</p></div>
+          <div>
+            <div className="ds-eyebrow">Design Studio</div>
+            <h2>Design your path</h2>
+            <p>{subtitle}</p>
+          </div>
           <div className="ds-actions">
-            <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>
+            {mode === "plan" && <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>}
             <div className="ds-hint">← Move to the left edge for the menu · Home to go back</div>
           </div>
         </div>
-        <div className="ds-work">
-          <div className="ds-board"><PlanBoard {...boardProps} /></div>
-          <aside className="ds-rail island">
-            <div className="ds-rail-h">Add courses <span>{totalRemaining} cr left</span></div>
-            <div className="ds-rail-scroll">
-              {openReqs.map((r) => {
-                const recs = recommend({ area: r.area, remainingMap, taken, planned: chosenSet, satisfied: taken }).slice(0, 3);
-                const rem = remainingMap[r.area];
-                return (
-                  <div className="ds-railcard" key={r.id}>
-                    <div className="ds-card-head"><b>{r.label.replace(/ —.*/, "")}</b><span className="ds-left">{rem.kind === "credits" ? `${rem.remaining} cr` : `${rem.remaining} left`}</span></div>
-                    {recs.map((rc) => {
-                      const c = COURSES[rc.id]; const on = chosenSet.has(rc.id);
-                      return (
-                        <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id}>
-                          <div className="ds-rec-main" onClick={() => setOpenDesc(openDesc === rc.id ? null : rc.id)}>
-                            <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
-                            <div className="ds-rec-ttl">{c.title}</div>
-                            {openDesc === rc.id && <div className="ds-rec-desc">{getDesc(rc.id)}</div>}
-                          </div>
-                          <button className={`ds-add ${on ? "on" : ""}`} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>{on ? "✓" : "＋"}</button>
-                        </div>
-                      );
-                    })}
-                    <button className="ds-viewmore" onClick={() => setViewMore(r.area)}>View more →</button>
-                  </div>
-                );
-              })}
-              {openReqs.length === 0 && <div className="ds-done-sm">🎉 Gen-eds on track. Add courses in the plan or hit Auto-plan.</div>}
-            </div>
-          </aside>
+
+        <div className="ds-modes">
+          <button className={mode === "plan" ? "active" : ""} onClick={() => setMode("plan")}>Plan</button>
+          <button className={mode === "programs" ? "active" : ""} onClick={() => setMode("programs")}>Majors &amp; Minors</button>
+          <button className={mode === "compare" ? "active" : ""} onClick={() => setMode("compare")}>Compare</button>
         </div>
+
+        {mode === "plan" && (
+          <div className={`ds-work ${railOpen ? "" : "rail-collapsed"}`}>
+            <div className="ds-board"><PlanBoard {...boardProps} /></div>
+            {railOpen ? (
+              <aside className="ds-rail island">
+                <div className="ds-rail-h">
+                  <span>Add courses</span>
+                  <span className="ds-rail-right"><span className="ds-rail-left">{totalRemaining} cr left</span>
+                    <button className="ds-rail-collapse" title="Collapse" onClick={() => setRailOpen(false)}>⟩</button></span>
+                </div>
+                <div className="ds-rail-scroll">
+                  {openReqs.map((r) => {
+                    const recs = recommend({ area: r.area, remainingMap, taken, planned: chosenSet, satisfied: taken }).slice(0, 3);
+                    const rem = remainingMap[r.area];
+                    return (
+                      <div className="ds-railcard" key={r.id}>
+                        <div className="ds-card-head"><b>{r.label.replace(/ —.*/, "")}</b><span className="ds-left">{rem.kind === "credits" ? `${rem.remaining} cr` : `${rem.remaining} left`}</span></div>
+                        {recs.map((rc) => {
+                          const c = COURSES[rc.id]; const on = chosenSet.has(rc.id);
+                          return (
+                            <div className={`ds-rec ${on ? "on" : ""}`} key={rc.id}>
+                              <div className="ds-rec-main" onClick={() => setOpenDesc(openDesc === rc.id ? null : rc.id)}>
+                                <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
+                                <div className="ds-rec-ttl">{c.title}</div>
+                                {openDesc === rc.id && <div className="ds-rec-desc">{getDesc(rc.id)}</div>}
+                              </div>
+                              <button className={`ds-add ${on ? "on" : ""}`} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>{on ? "✓" : "＋"}</button>
+                            </div>
+                          );
+                        })}
+                        <button className="ds-viewmore" onClick={() => setViewMore(r.area)}>View more →</button>
+                      </div>
+                    );
+                  })}
+                  {openReqs.length === 0 && <div className="ds-done-sm">🎉 Gen-eds on track. Add courses in the plan or hit Auto-plan.</div>}
+                </div>
+              </aside>
+            ) : (
+              <button className="ds-rail-reopen" title="Show course suggestions" onClick={() => setRailOpen(true)}>⟨ Add courses</button>
+            )}
+          </div>
+        )}
+
+        {mode === "programs" && (
+          <ProgramsPanel majorId={majorId} minorIds={minorIds} onMajor={onMajor} onToggleMinor={onToggleMinor}
+            programs={programs} onCompare={() => setMode("compare")} />
+        )}
+
+        {mode === "compare" && (
+          <CompareView embedded completedSet={completedSet} ipSet={ipSet} currentMajorId={majorId}
+            currentMinorIds={minorIds} programs={programs} onClose={() => setMode("plan")} />
+        )}
       </div>
       {viewMore && (
         <CourseBrowser program={program} planIds={boardProps.planIds} completedSet={completedSet} ipSet={ipSet}
           chosenSet={chosenSet} addChosen={addChosen} schedule={boardProps.schedule}
           areaFilter={[viewMore]} onClose={() => setViewMore(null)} />
       )}
+    </div>
+  );
+}
+
+// Readable major/minor selection, embedded in the Design Studio. Two clear
+// columns (major radios + minor checkboxes) with search and live counts.
+function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, onCompare }) {
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const majors = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle) || (m.school || "").toLowerCase().includes(needle));
+  const minors = Object.values(MINORS).filter((m) => !needle || m.name.toLowerCase().includes(needle));
+  const audited = (name, level) => !!findAudit(name, programs, level);
+  return (
+    <div className="ds-programs">
+      <div className="dp-bar">
+        <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search majors & minors…" />
+        <button className="mm-compare" onClick={onCompare}>⚖ Compare programs</button>
+      </div>
+      <div className="dp-cols">
+        <section className="dp-col island">
+          <div className="dp-col-h">Major <span className="mm-count">{majors.length}</span></div>
+          <div className="dp-scroll">
+            {majors.map((m) => (
+              <label key={m.id} className={`dp-row ${majorId === m.id ? "sel" : ""}`}>
+                <input type="radio" name="ds-major" checked={majorId === m.id} onChange={() => onMajor(m.id)} />
+                <div className="dp-info"><b>{m.name}</b><span>{m.school}{audited(m.name, "major") ? " · ✓ audited" : ""}</span></div>
+              </label>
+            ))}
+          </div>
+        </section>
+        <section className="dp-col island">
+          <div className="dp-col-h">Minors <span className="mm-count">{minors.length}</span><span className="dp-note">select any (double-count allowed)</span></div>
+          <div className="dp-scroll">
+            {minors.map((m) => (
+              <label key={m.id} className={`dp-row ${minorIds.includes(m.id) ? "sel" : ""}`}>
+                <input type="checkbox" checked={minorIds.includes(m.id)} onChange={() => onToggleMinor(m.id)} />
+                <div className="dp-info"><b>{m.name}</b><span>{audited(m.name, "minor") ? "✓ audited — exact from DARS" : (m.deltas && m.deltas.length ? m.deltas.map(describeDelta).join(" · ") : `${m.reqCredits || 30} cr · requirements from DARS`)}</span></div>
+              </label>
+            ))}
+          </div>
+        </section>
+      </div>
     </div>
   );
 }
@@ -953,10 +1035,9 @@ export default function App() {
   const [now, setNow] = useState(new Date());
   const [detailReq, setDetailReq] = useState(null);
   const [showHandoff, setShowHandoff] = useState(false);
-  const [showMajors, setShowMajors] = useState(false);
   const [showDesign, setShowDesign] = useState(false);
+  const [designMode, setDesignMode] = useState("plan"); // plan | programs | compare (studio tabs)
   const [showAccount, setShowAccount] = useState(false);
-  const [showCompare, setShowCompare] = useState(false);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [courseTerms, setCourseTerms] = useState({});
@@ -1060,12 +1141,13 @@ export default function App() {
   const hour = now.getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
+  const openDesign = (m = "plan") => { setDesignMode(m); setShowDesign(true); };
   const dialItems = [
     { key: "settings", label: "Settings", icon: I.gear, onClick: () => {} },
     { key: "planview", label: "Plan View", icon: I.cal, onClick: () => setView("plan") },
     { key: "catalog", label: "Catalog", icon: I.search, onClick: () => setView("catalog") },
-    { key: "majors", label: "Majors", icon: I.grad, onClick: () => setShowMajors(true) },
-    { key: "compare", label: "Compare", icon: I.grad, onClick: () => setShowCompare(true) },
+    { key: "majors", label: "Majors", icon: I.grad, onClick: () => openDesign("programs") },
+    { key: "compare", label: "Compare", icon: I.grad, onClick: () => openDesign("compare") },
     { key: "add", label: "Add Class", icon: I.plus, onClick: () => setView("catalog") },
     { key: "auto", label: "Auto Plan", icon: I.spark, onClick: autoPlan },
   ];
@@ -1077,7 +1159,7 @@ export default function App() {
       <div className={`dock island ${showDesign ? "tucked" : ""}`}>
         <button className={view === "plan" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("plan"); }} title="Home">{I.home}</button>
         <button className={view === "catalog" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("catalog"); }} title="Catalog">{I.search}</button>
-        <button className={showDesign ? "active" : ""} onClick={() => setShowDesign(true)} title="Design Studio">{I.pen}</button>
+        <button className={showDesign ? "active" : ""} onClick={() => openDesign("plan")} title="Design Studio">{I.pen}</button>
         <div className="sep" />
         <button className={showAccount ? "active" : ""} onClick={() => setShowAccount(true)} title="Account">{I.user}</button>
       </div>
@@ -1114,9 +1196,9 @@ export default function App() {
       </div>
 
       <div className="toolbar island">
-        <button onClick={() => setShowDesign(true)}>{I.pen}<span>Design</span></button>
+        <button onClick={() => openDesign("plan")}>{I.pen}<span>Design</span></button>
         <button onClick={() => setView("catalog")}>{I.plus}<span>Add</span></button>
-        <button onClick={() => setShowMajors(true)}>{I.grad}<span>Majors &amp; Minors</span></button>
+        <button onClick={() => openDesign("programs")}>{I.grad}<span>Majors &amp; Minors</span></button>
         <button className="primary" onClick={autoPlan}>{I.spark}<span>Auto Plan</span></button>
         <button onClick={() => setSchedule({})}>{I.undo}<span>Reset</span></button>
       </div>
@@ -1124,16 +1206,6 @@ export default function App() {
       {detailReq && (
         <CategoryDetail req={detailReq} major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen} onClose={() => setDetailReq(null)} />
-      )}
-      {showMajors && (
-        <MajorsMinors majorId={majorId} minorIds={minorIds}
-          onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); }}
-          onToggleMinor={(id) => setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])}
-          onClose={() => setShowMajors(false)} onCompare={() => { setShowMajors(false); setShowCompare(true); }} />
-      )}
-      {showCompare && (
-        <CompareView completedSet={completedSet} ipSet={ipSet} currentMajorId={majorId} currentMinorIds={minorIds}
-          programs={snapshot?.programs} onClose={() => setShowCompare(false)} />
       )}
       {showHandoff && (
         <HandoffModal token={token}
@@ -1146,6 +1218,11 @@ export default function App() {
           boardProps={{ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode }}
           program={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen}
+          mode={designMode} setMode={setDesignMode}
+          majorId={majorId} minorIds={minorIds}
+          onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); }}
+          onToggleMinor={(id) => setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])}
+          programs={snapshot?.programs}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {showAccount && (
