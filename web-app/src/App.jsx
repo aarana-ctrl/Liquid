@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "react";
 import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript, getDesc } from "./data.js";
 import { mockSignIn } from "./auth.js";
-import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE } from "./api.js";
+import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram } from "./data.js";
 import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit } from "./recommend.js";
 import bgUrl from "./bg.jpg";
@@ -654,7 +654,23 @@ function minorEstimateCard(mn, completedSet, ipSet) {
   };
 }
 
-function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded }) {
+// Build a progress card for a bookmarked program. Prefers exact DARS data; the
+// estimate path folds PLANNED (chosen) courses in with completed + in-progress,
+// so a saved program's progress updates as you plan in the studio.
+function bookmarkCard(bm, completedSet, ipSet, chosenSet, programs) {
+  const withPlanned = new Set([...ipSet, ...chosenSet]); // planned counts toward progress
+  const hit = findAudit(bm.name, programs, bm.level);
+  if (hit) return compareFromAudit({ id: bm.id, name: bm.name }, hit);
+  if (bm.level === "minor") {
+    const mn = MINORS[bm.id] || { id: bm.id, name: bm.name, reqCredits: 30, estimated: true };
+    return minorEstimateCard(mn, completedSet, withPlanned);
+  }
+  const entry = MAJORS[bm.id] || MAJOR_CATALOG.find((m) => m.id === bm.id);
+  if (!entry) return { id: bm.id, name: bm.name, remaining: 0, total: 0, earned: 0, pct: 0, cats: [], exact: false, needsAudit: true };
+  return { ...compareProgram(resolveProgram(bm.id), completedSet, withPlanned), exact: false, needsAudit: true };
+}
+
+function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded, bookmarks, toggleBookmark }) {
   const [tab, setTab] = useState("majors");
   const [q, setQ] = useState("");
 
@@ -747,6 +763,8 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
               return (
                 <div key={r.id} className={`island cmp-card ${i === 0 ? "best" : ""}`}>
                   {i === 0 && results.length > 1 && <div className="cmp-badge">Closest to done</div>}
+                  {toggleBookmark && (() => { const lvl = tab === "majors" ? "major" : "minor"; const on = bookmarks?.some((b) => b.id === r.id && b.level === lvl);
+                    return <button className={`cmp-star ${on ? "on" : ""}`} title={on ? "Remove bookmark" : "Bookmark to track"} onClick={() => toggleBookmark({ id: r.id, level: lvl, name: r.name })}>{on ? "★" : "☆"}</button>; })()}
                   <div className="cmp-name">{r.name} {r.exact ? <span className="cmp-exact">✓ exact · DARS</span> : <span className="cmp-est">estimate</span>}</div>
                   <div className="cmp-big"><b>{r.remaining}</b> {unitBig} left{r.remCourses > 0 ? <> <span className="cmp-plus">+ {r.remCourses} required course{r.remCourses > 1 ? "s" : ""}</span></> : null} <span className="cmp-pct">· {r.pct}% done</span></div>
                   <div className="bar"><div style={{ width: `${Math.min(100, r.pct)}%` }} /></div>
@@ -792,7 +810,7 @@ function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
 
 // ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
 function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose,
-  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs }) {
+  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
@@ -831,6 +849,7 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
           <button className={mode === "plan" ? "active" : ""} onClick={() => setMode("plan")}>Plan</button>
           <button className={mode === "programs" ? "active" : ""} onClick={() => setMode("programs")}>Majors &amp; Minors</button>
           <button className={mode === "compare" ? "active" : ""} onClick={() => setMode("compare")}>Compare</button>
+          <button className={mode === "saved" ? "active" : ""} onClick={() => setMode("saved")}>★ Saved{bookmarks?.length ? ` (${bookmarks.length})` : ""}</button>
         </div>
 
         {mode === "plan" && (
@@ -878,12 +897,19 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
 
         {mode === "programs" && (
           <ProgramsPanel majorId={majorId} minorIds={minorIds} onMajor={onMajor} onToggleMinor={onToggleMinor}
-            programs={programs} onCompare={() => setMode("compare")} />
+            programs={programs} onCompare={() => setMode("compare")} bookmarks={bookmarks} toggleBookmark={toggleBookmark} />
         )}
 
         {mode === "compare" && (
           <CompareView embedded completedSet={completedSet} ipSet={ipSet} currentMajorId={majorId}
-            currentMinorIds={minorIds} programs={programs} onClose={() => setMode("plan")} />
+            currentMinorIds={minorIds} programs={programs} onClose={() => setMode("plan")}
+            bookmarks={bookmarks} toggleBookmark={toggleBookmark} />
+        )}
+
+        {mode === "saved" && (
+          <SavedPanel bookmarks={bookmarks} toggleBookmark={toggleBookmark} completedSet={completedSet}
+            ipSet={ipSet} chosenSet={chosenSet} programs={programs} requestAudit={requestAudit}
+            onBrowse={() => setMode("programs")} />
         )}
       </div>
       {viewMore && (
@@ -897,12 +923,17 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
 
 // Readable major/minor selection, embedded in the Design Studio. Two clear
 // columns (major radios + minor checkboxes) with search and live counts.
-function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, onCompare }) {
+function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, onCompare, bookmarks, toggleBookmark }) {
   const [q, setQ] = useState("");
   const needle = q.trim().toLowerCase();
   const majors = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle) || (m.school || "").toLowerCase().includes(needle));
   const minors = Object.values(MINORS).filter((m) => !needle || m.name.toLowerCase().includes(needle));
   const audited = (name, level) => !!findAudit(name, programs, level);
+  const saved = (id, level) => bookmarks?.some((b) => b.id === id && b.level === level);
+  const star = (m, level) => (
+    <button className={`dp-star ${saved(m.id, level) ? "on" : ""}`} title={saved(m.id, level) ? "Remove bookmark" : "Bookmark to track"}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleBookmark({ id: m.id, level, name: m.name }); }}>{saved(m.id, level) ? "★" : "☆"}</button>
+  );
   return (
     <div className="ds-programs">
       <div className="dp-bar">
@@ -911,12 +942,13 @@ function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, on
       </div>
       <div className="dp-cols">
         <section className="dp-col island">
-          <div className="dp-col-h">Major <span className="mm-count">{majors.length}</span></div>
+          <div className="dp-col-h">Major <span className="mm-count">{majors.length}</span><span className="dp-note">☆ bookmark to track</span></div>
           <div className="dp-scroll">
             {majors.map((m) => (
               <label key={m.id} className={`dp-row ${majorId === m.id ? "sel" : ""}`}>
                 <input type="radio" name="ds-major" checked={majorId === m.id} onChange={() => onMajor(m.id)} />
                 <div className="dp-info"><b>{m.name}</b><span>{m.school}{audited(m.name, "major") ? " · ✓ audited" : ""}</span></div>
+                {star(m, "major")}
               </label>
             ))}
           </div>
@@ -928,10 +960,57 @@ function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, on
               <label key={m.id} className={`dp-row ${minorIds.includes(m.id) ? "sel" : ""}`}>
                 <input type="checkbox" checked={minorIds.includes(m.id)} onChange={() => onToggleMinor(m.id)} />
                 <div className="dp-info"><b>{m.name}</b><span>{audited(m.name, "minor") ? "✓ audited — exact from DARS" : (m.deltas && m.deltas.length ? m.deltas.map(describeDelta).join(" · ") : `${m.reqCredits || 30} cr · requirements from DARS`)}</span></div>
+                {star(m, "minor")}
               </label>
             ))}
           </div>
         </section>
+      </div>
+    </div>
+  );
+}
+
+// Saved / bookmarked programs — a watchlist whose progress updates as you take
+// and PLAN courses. Exact where DARS has been run; estimate otherwise.
+function SavedPanel({ bookmarks, toggleBookmark, completedSet, ipSet, chosenSet, programs, requestAudit, onBrowse }) {
+  const cards = (bookmarks || [])
+    .map((b) => ({ b, card: bookmarkCard(b, completedSet, ipSet, chosenSet, programs) }))
+    .sort((x, y) => ((x.card.remaining || 0) + (x.card.remCourses || 0) * 5) - ((y.card.remaining || 0) + (y.card.remCourses || 0) * 5));
+  if (!cards.length) {
+    return (
+      <div className="ds-saved-empty island">
+        <div className="sv-empty-star">★</div>
+        <h3>No saved programs yet</h3>
+        <p>Bookmark any major or minor with the ☆ in <b>Majors &amp; Minors</b> or <b>Compare</b>. Saved programs live here and their progress updates as you take and plan courses.</p>
+        <button className="mm-compare" onClick={onBrowse}>Browse majors &amp; minors</button>
+      </div>
+    );
+  }
+  return (
+    <div className="ds-saved">
+      <p className="sv-note">Progress updates automatically as you complete and plan courses. <b>✓ exact</b> = pulled from your DARS audit; others are estimates until DARS runs.</p>
+      <div className="sv-grid">
+        {cards.map(({ b, card }) => {
+          const open = (card.cats || []).filter((c) => c.remaining > 0).sort((a, z) => z.remaining - a.remaining).slice(0, 4);
+          return (
+            <div key={b.level + b.id} className="island sv-card">
+              <div className="sv-head">
+                <div className="sv-name">{card.name} <span className="sv-lvl">{b.level}</span></div>
+                <button className="dp-star on" title="Remove bookmark" onClick={() => toggleBookmark(b)}>★</button>
+              </div>
+              <div className="sv-big"><b>{card.remaining}</b> {b.level === "minor" ? "cr" : "cr"} left{card.remCourses > 0 ? <span className="cmp-plus"> + {card.remCourses} course{card.remCourses > 1 ? "s" : ""}</span> : null}
+                <span className="cmp-pct"> · {card.pct}%</span> {card.exact ? <span className="cmp-exact">✓ exact</span> : <span className="cmp-est">estimate</span>}</div>
+              <div className="bar"><div style={{ width: `${Math.min(100, card.pct)}%` }} /></div>
+              <div className="cmp-cats">
+                {open.map((c, j) => <div key={c.label + j} className="cmp-cat"><span>{c.label}</span><b>{c.remaining}{c.unit === "cr" ? " cr" : " left"}</b></div>)}
+                {open.length === 0 && <div className="cmp-cat done">All requirements met 🎉</div>}
+              </div>
+              {card.needsAudit && requestAudit && (
+                <button className="sv-audit" onClick={() => requestAudit(b)}>⟳ Auto-run DARS for exact numbers</button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1040,8 +1119,12 @@ export default function App() {
   const [showAccount, setShowAccount] = useState(false);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
+  const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
   const [courseTerms, setCourseTerms] = useState({});
   const didAutoSync = useRef(false);
+  const toggleBookmark = (b) => setBookmarks((p) => p.some((x) => x.id === b.id && x.level === b.level)
+    ? p.filter((x) => !(x.id === b.id && x.level === b.level))
+    : [...p, { id: b.id, level: b.level, name: b.name, savedAt: Date.now() }]);
 
   const program = useMemo(() => buildProgram(resolveProgram(majorId), minorIds), [majorId, minorIds]);
   const completedSet = useMemo(() => new Set(completed), [completed]);
@@ -1078,8 +1161,9 @@ export default function App() {
           const clean = {}; for (const k in plan.schedule) { const v = plan.schedule[k]; if (typeof v === "number" && v > 5000) clean[k] = v; }
           if (Object.keys(clean).length) setSchedule(clean);
         }
-        if (plan.majorId && MAJORS[plan.majorId]) setMajorId(plan.majorId);
+        if (plan.majorId && (MAJORS[plan.majorId] || MAJOR_CATALOG.some((m) => m.id === plan.majorId))) setMajorId(plan.majorId);
         if (Array.isArray(plan.minorIds)) setMinorIds(plan.minorIds);
+        if (Array.isArray(plan.bookmarks)) setBookmarks(plan.bookmarks);
       }
       if (snap) { setSnapshot(snap); if (snap.terms) setCourseTerms((t) => ({ ...t, ...snap.terms })); }
       setLoaded(true);
@@ -1087,9 +1171,9 @@ export default function App() {
   }, [token]);
   useEffect(() => {
     if (!token || !loaded) return;
-    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, minorIds }), 600);
+    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks }), 600);
     return () => clearTimeout(t);
-  }, [token, loaded, chosen, completed, inProgress, schedule, majorId, minorIds]);
+  }, [token, loaded, chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks]);
 
   async function handleSignIn(profile) {
     if (backendOnline) { try { const { token: tk, user: u } = await devLogin(profile); setUser(u); setToken(tk); return; } catch { /* local */ } }
@@ -1132,6 +1216,15 @@ export default function App() {
   function toggleCompleted(id) { setCompleted((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); }
   const addChosen = (id) => setChosen((p) => p.includes(id) ? p : [...p, id]);
   const removeChosen = (id) => setChosen((p) => p.filter((x) => x !== id));
+
+  // Ask the extension (via the backend queue) to auto-run DARS for a program we
+  // don't have exact data for yet — so choosing a new major/minor pulls its real
+  // requirements in the background, no manual audit needed.
+  const requestAudit = (b) => {
+    if (!token || !b?.name) return;
+    if (findAudit(b.name, snapshot?.programs, b.level)) return; // already exact
+    enqueueAudit(token, { name: b.name, level: b.level }).catch(() => {});
+  };
 
   if (!user) return <Login onSignIn={handleSignIn} backendOnline={backendOnline} oidcEnabled={oidcEnabled} />;
 
@@ -1220,9 +1313,10 @@ export default function App() {
           addChosen={addChosen} removeChosen={removeChosen}
           mode={designMode} setMode={setDesignMode}
           majorId={majorId} minorIds={minorIds}
-          onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); }}
-          onToggleMinor={(id) => setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id])}
+          onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); requestAudit({ id, level: "major", name: (MAJOR_CATALOG.find((m) => m.id === id) || {}).name || id }); }}
+          onToggleMinor={(id) => { setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (MINORS[id]) requestAudit({ id, level: "minor", name: MINORS[id].name }); }}
           programs={snapshot?.programs}
+          bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {showAccount && (

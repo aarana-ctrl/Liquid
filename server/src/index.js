@@ -85,8 +85,49 @@ app.get("/api/me", auth, async (req, res) => {
 // ---- plan (saved server-side → syncs across devices) -----------------------
 app.get("/api/plan", auth, async (req, res) => res.json(await getPlan(req.user.sub)));
 app.put("/api/plan", auth, async (req, res) => {
-  const { chosen, schedule, completed, inProgress, majorId, minorIds } = req.body || {};
-  res.json(await savePlan(req.user.sub, { chosen, schedule, completed, inProgress, majorId, minorIds }));
+  const { chosen, schedule, completed, inProgress, majorId, minorIds, bookmarks } = req.body || {};
+  const prev = (await getPlan(req.user.sub)) || {};
+  res.json(await savePlan(req.user.sub, { ...prev, chosen, schedule, completed, inProgress, majorId, minorIds, bookmarks }));
+});
+
+// ---- Auto-audit queue ------------------------------------------------------
+// The web app enqueues programs it wants exact DARS data for; the extension
+// reads this queue while the student is on MyPlan, runs "Audit a different
+// program" for each, and imports the result (which clears it from the queue).
+// Core program name for matching. DARS titles put the distinguishing name INSIDE
+// parentheses ("Bachelor of Science (Psychology)", "Minor (Statistics)"), so use
+// the parenthetical when present, then strip degree/level filler words.
+const normName = (s) => {
+  const str = String(s || "").toLowerCase();
+  const paren = str.match(/\(([^)]+)\)/);
+  return (paren ? paren[1] : str)
+    .replace(/\b(bachelor|science|arts|minor|major|of|the|in|degree|b\.?s\.?|b\.?a\.?)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+};
+const nameMatch = (a, b) => { const x = normName(a), y = normName(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
+app.get("/api/audit-queue", auth, async (req, res) => {
+  const plan = (await getPlan(req.user.sub)) || {};
+  res.json({ queue: plan.auditQueue || [] });
+});
+app.post("/api/audit-queue", auth, async (req, res) => {
+  const { name, level } = req.body || {};
+  if (!name) return res.status(400).json({ error: "name required" });
+  const plan = (await getPlan(req.user.sub)) || {};
+  const queue = plan.auditQueue || [];
+  // skip if already audited or already queued
+  const snap = await getSnapshot(req.user.sub);
+  const audited = snap?.programs && Object.values(snap.programs).some((p) => nameMatch(p.program, name));
+  const exists = queue.some((q) => normName(q.name) === normName(name));
+  if (!audited && !exists) queue.push({ name, level: level || "major", requestedAt: Date.now() });
+  await savePlan(req.user.sub, { ...plan, auditQueue: queue });
+  res.json({ queue, added: !audited && !exists });
+});
+app.post("/api/audit-queue/done", auth, async (req, res) => {
+  const { name } = req.body || {};
+  const plan = (await getPlan(req.user.sub)) || {};
+  const queue = (plan.auditQueue || []).filter((q) => normName(q.name) !== normName(name));
+  await savePlan(req.user.sub, { ...plan, auditQueue: queue });
+  res.json({ queue });
 });
 
 // ---- MyPlan snapshot -------------------------------------------------------
@@ -109,6 +150,14 @@ async function mergeProgramSnapshot(userId, snap) {
     inProgress: snap.inProgress,
     fetchedAt: snap.fetchedAt,
   };
+  // Clear this program from the auto-audit queue now that we have its data.
+  try {
+    const plan = (await getPlan(userId)) || {};
+    if (plan.auditQueue?.length) {
+      const q = plan.auditQueue.filter((it) => !nameMatch(key, it.name));
+      if (q.length !== plan.auditQueue.length) await savePlan(userId, { ...plan, auditQueue: q });
+    }
+  } catch { /* non-fatal */ }
   return saveSnapshot(userId, { ...snap, programs });
 }
 

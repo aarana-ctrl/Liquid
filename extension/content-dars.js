@@ -59,10 +59,90 @@
   }
 
   // allow the popup to trigger a sync
-  chrome.runtime.onMessage.addListener((m) => { if (m && m.type === "lp-do-import") doImport(true); });
+  chrome.runtime.onMessage.addListener((m) => {
+    if (m && m.type === "lp-do-import") doImport(true);
+    if (m && m.type === "lp-run-queue") processQueue(true);
+  });
+
+  // --- Auto-audit queue: run DARS for programs the app asked for --------------
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const norm = (s) => String(s || "").toLowerCase().replace(/\s*\([^)]*\)\s*/g, " ").replace(/[^a-z0-9]+/g, " ").trim();
+
+  // Find the "Audit a different program / Run a new audit" entry control.
+  function findNewAuditControl() {
+    const els = [...document.querySelectorAll('button, a, [role="button"]')];
+    return els.find((e) => /audit a different program|run a new audit|different program|new audit|change program/i.test(e.textContent || "")) || null;
+  }
+  // Find a control (option / list item / input) matching the program name.
+  function findProgramOption(name) {
+    const n = norm(name);
+    // a <select> with matching option
+    for (const sel of document.querySelectorAll("select")) {
+      const opt = [...sel.options].find((o) => { const t = norm(o.textContent); return t.includes(n) || n.includes(t); });
+      if (opt) return { type: "select", sel, value: opt.value };
+    }
+    // a clickable option / menu item
+    const clickable = [...document.querySelectorAll('li, [role="option"], .option, button, a')]
+      .find((e) => { const t = norm(e.textContent); return t && (t === n || t.includes(n) || n.includes(t)); });
+    if (clickable) return { type: "click", el: clickable };
+    return null;
+  }
+
+  async function driveNewAudit(name) {
+    // Open the program picker if there is one.
+    const entry = findNewAuditControl();
+    if (entry) { entry.click(); await sleep(1200); }
+    // Type into a search box if present (helps long option lists render).
+    const search = document.querySelector('input[type="search"], input[placeholder*="program" i], input[placeholder*="search" i]');
+    if (search) {
+      search.focus();
+      search.value = name.replace(/\s*\(.*/, "");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+      await sleep(1000);
+    }
+    const opt = findProgramOption(name);
+    if (!opt) return false; // fail safe — don't click blindly
+    if (opt.type === "select") {
+      opt.sel.value = opt.value;
+      opt.sel.dispatchEvent(new Event("change", { bubbles: true }));
+    } else {
+      opt.el.click();
+    }
+    await sleep(1200);
+    // Submit / run the audit if there's an explicit button.
+    const run = [...document.querySelectorAll('button, a, [role="button"]')]
+      .find((e) => /^(run audit|run|submit|audit)$/i.test((e.textContent || "").trim()));
+    if (run) run.click();
+    // Wait for the audit to (re)render, then let the observer auto-import it.
+    for (let i = 0; i < 20; i++) { await sleep(1500); if (norm(document.body.innerText).includes(norm(name).split(" ")[0])) break; }
+    await sleep(2500);
+    doImport(false);
+    return true;
+  }
+
+  let queueRunning = false;
+  async function processQueue(manual) {
+    if (queueRunning) return;
+    chrome.runtime.sendMessage({ type: "lp-queue" }, async (resp) => {
+      if (!resp || !resp.ok || !resp.queue || !resp.queue.length) { if (manual) toast("No programs queued for auto-audit.", true); return; }
+      queueRunning = true;
+      toast("Auto-running DARS for " + resp.queue.length + " program" + (resp.queue.length > 1 ? "s" : "") + "…", true);
+      for (const item of resp.queue) {
+        try {
+          const ok = await driveNewAudit(item.name);
+          if (ok) { chrome.runtime.sendMessage({ type: "lp-queue-done", name: item.name }); toast("✓ " + item.name + " audited.", true); }
+          else { toast("Couldn't auto-select “" + item.name + "”. Run it once manually and I'll capture it.", false); }
+          await sleep(2500);
+        } catch (e) { /* keep going */ }
+      }
+      queueRunning = false;
+    });
+  }
 
   // Initial import once the SPA renders, then watch for program changes.
   setTimeout(() => doImport(false), 2500);
+  // Once the current audit is captured, process any programs the app queued.
+  setTimeout(() => processQueue(false), 7000);
 
   // Re-check when the page content mutates (running a different program's audit
   // rewrites the same page), debounced. This is what captures each program.

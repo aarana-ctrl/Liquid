@@ -480,7 +480,32 @@ body {
 .dp-info { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .dp-info b { font-size: 14px; line-height: 1.25; }
 .dp-info span { font-size: 12px; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; }
+.dp-row .dp-star { margin-left: auto; }
+.dp-star { flex: none; border: none; background: transparent; color: var(--text-faint); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px; border-radius: 8px; transition: color 0.15s, transform 0.15s; }
+.dp-star:hover { color: var(--accent); transform: scale(1.15); }
+.dp-star.on { color: #f4c452; }
 @media (max-width: 1000px) { .dp-cols { grid-template-columns: 1fr; } }
+
+/* Compare card bookmark star */
+.cmp-star { position: absolute; top: 12px; right: 12px; border: none; background: transparent; color: var(--text-faint); font-size: 19px; line-height: 1; cursor: pointer; padding: 2px; border-radius: 8px; transition: color 0.15s, transform 0.15s; z-index: 2; }
+.cmp-card.best .cmp-star { right: 118px; }
+.cmp-star:hover { color: var(--accent); transform: scale(1.15); } .cmp-star.on { color: #f4c452; }
+
+/* Saved / bookmarked watchlist */
+.ds-saved { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+.sv-note { font-size: 12px; color: var(--text-dim); margin: 0 0 14px; }
+.sv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+.sv-card { padding: 18px; }
+.sv-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.sv-name { font-size: 16px; font-weight: 700; }
+.sv-lvl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-faint); border: 1px solid var(--glass-brd); border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+.sv-big { font-size: 14px; margin: 8px 0; } .sv-big b { font-size: 26px; font-weight: 800; }
+.sv-audit { margin-top: 12px; width: 100%; border: 1px solid rgba(139,123,240,0.4); background: rgba(139,123,240,0.12); color: var(--text); border-radius: 10px; padding: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.sv-audit:hover { background: rgba(139,123,240,0.2); }
+.ds-saved-empty { align-self: center; margin: auto; max-width: 460px; text-align: center; padding: 40px 30px; }
+.sv-empty-star { font-size: 42px; color: #f4c452; margin-bottom: 6px; }
+.ds-saved-empty h3 { font-size: 19px; margin: 0 0 8px; }
+.ds-saved-empty p { font-size: 13.5px; color: var(--text-dim); line-height: 1.55; margin: 0 0 18px; }
 
 /* Compare embedded inside the studio (in-flow rather than fixed overlay) */
 .course-browser.embedded { position: static; inset: auto; padding: 0; height: auto; flex: 1 1 auto; min-height: 0; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }

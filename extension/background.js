@@ -50,6 +50,33 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "lp-queue") {
+    (async () => {
+      const s = await readStore();
+      const api = baseUrl(s);
+      if (!s.token || !api) return sendResponse({ ok: false, error: "not-connected" });
+      try {
+        const r = await fetch(api + "/api/audit-queue", { headers: { Authorization: "Bearer " + s.token } });
+        const j = await r.json().catch(() => ({}));
+        sendResponse({ ok: r.ok, queue: j.queue || [] });
+      } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
+    })();
+    return true;
+  }
+
+  if (msg?.type === "lp-queue-done") {
+    (async () => {
+      const s = await readStore();
+      const api = baseUrl(s);
+      if (!s.token || !api) return sendResponse({ ok: false });
+      try {
+        await fetch(api + "/api/audit-queue/done", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.token }, body: JSON.stringify({ name: msg.name }) });
+        sendResponse({ ok: true });
+      } catch { sendResponse({ ok: false }); }
+    })();
+    return true;
+  }
+
   if (msg?.type === "lp-import") {
     (async () => {
       const s = await readStore();

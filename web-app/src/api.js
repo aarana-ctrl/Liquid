@@ -60,6 +60,16 @@ export async function postSnapshot(token, snapshot) {
   return r.ok ? r.json() : null;
 }
 
+// ---- Auto-audit queue: ask the extension to run DARS for a program ----
+export async function enqueueAudit(token, program) {
+  const r = await fetch(`${API_BASE}/api/audit-queue`, { method: "POST", headers: authHeaders(token), body: JSON.stringify(program) });
+  return r.ok ? r.json() : null;
+}
+export async function getAuditQueue(token) {
+  const r = await fetch(`${API_BASE}/api/audit-queue`, { headers: authHeaders(token) });
+  return r.ok ? r.json() : null;
+}
+
 // ---- MyPlan handoff (bookmarklet import) ----
 export async function startImport(token) {
   const r = await fetch(`${API_BASE}/api/import/start`, { method: "POST", headers: authHeaders(token) });
