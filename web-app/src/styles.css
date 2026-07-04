@@ -602,9 +602,11 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .cmp-audit-btn:hover { background: linear-gradient(135deg, rgba(139,123,240,0.4), rgba(106,168,255,0.32)); }
 .audit-toast { position: fixed; top: 22px; left: 50%; transform: translateX(-50%); z-index: 200; padding: 12px 20px; font-size: 13px; font-weight: 600; color: var(--text); max-width: 520px; text-align: center; }
 .cmp-cats { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
-.cmp-cat { display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; color: var(--text-dim); padding: 7px 10px; border-radius: 9px; background: var(--glass-2); border: 1px solid var(--glass-brd); }
-.cmp-cat b { color: var(--text); }
+.cmp-cat { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--text-dim); padding: 8px 12px; border-radius: 9px; background: var(--glass-2); border: 1px solid var(--glass-brd); }
+.cmp-cat > span { flex: 1 1 auto; min-width: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cmp-cat b { flex: 0 0 auto; white-space: nowrap; text-align: right; color: var(--text); }
 .cmp-cat.done { color: var(--enrolled); justify-content: center; }
+.cmp-cat.done, .cmp-cat.met { display: flex; }
 .cmp-cat.met { color: var(--enrolled); justify-content: center; font-size: 11.5px; background: rgba(95,208,168,0.08); border-color: rgba(95,208,168,0.25); }
 .cmp-caveat { margin-top: 12px; font-size: 11px; line-height: 1.45; color: var(--text-dim); padding: 8px 10px; border-radius: 9px; background: rgba(224,165,59,0.08); border: 1px solid rgba(224,165,59,0.25); }
 .cmp-minors { display: flex; flex-direction: column; gap: 12px; max-width: 620px; }

@@ -172,6 +172,8 @@
         } catch (e) { /* keep going with the rest of the queue */ }
       }
       queueRunning = false;
+      // Tell the background worker we're done, so a hidden background tab can close.
+      chrome.runtime.sendMessage({ type: "lp-queue-processed" });
     });
   }
 

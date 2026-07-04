@@ -1294,9 +1294,12 @@ export default function App() {
     setAuditToast(`Queuing ${list.length} program${list.length > 1 ? "s" : ""}…`);
     let ok = 0;
     for (const b of list) { try { const r = await enqueueAudit(token, { name: b.name, level: b.level }); if (r) ok++; } catch { /* */ } }
-    // Open MyPlan DARS so the extension runs the queue (needs the extension + sign-in).
-    window.open("https://myplan.uw.edu/audit/#/degree", "_blank");
-    setAuditToast(ok ? `Opened MyPlan — the extension is running DARS for ${ok} program${ok > 1 ? "s" : ""}. Results appear here automatically.` : "Couldn't reach the audit queue. Make sure you're signed in and the backend is up.");
+    // Ask the extension to run the queue in a hidden background tab — no popup
+    // window, no focus stolen. The extension posts results back automatically.
+    try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
+    setAuditToast(ok
+      ? `Queued ${ok} program${ok > 1 ? "s" : ""} — running DARS in the background. Exact numbers appear here automatically in a moment.`
+      : "Couldn't reach the audit queue. Make sure you're signed in and the backend is up.");
     setTimeout(() => setAuditToast(""), 9000);
   };
 

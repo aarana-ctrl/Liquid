@@ -13,4 +13,11 @@
   // re-sync if the user signs in after the page is already open
   window.addEventListener("focus", sync);
   setInterval(sync, 5000);
+
+  // The app asks us to run queued DARS audits in the background (no popup window).
+  window.addEventListener("message", (e) => {
+    if (e.source === window && e.data && e.data.source === "liquid" && e.data.type === "lp-run-queue") {
+      chrome.runtime.sendMessage({ type: "lp-run-queue-bg" });
+    }
+  });
 })();

@@ -122,7 +122,7 @@ export function compareFromAudit(meta, audit) {
       const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
       const have = (r.earnedCr || 0) + (r.ipCr || 0);
       const need = isCourses ? r.needsCourses : (have + (r.needsCr || 0));
-      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 90), need, remaining, unit: isCourses ? "courses" : "cr", detail: r.label, courses: [] };
+      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 130), need, remaining, unit: isCourses ? "courses" : "cr", detail: r.label, courses: [] };
     })
     .sort((x, y) => y.remaining - x.remaining);
 
