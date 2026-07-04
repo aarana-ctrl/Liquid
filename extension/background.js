@@ -4,6 +4,13 @@
 // API base the web app reported — so the extension works even if the deployed
 // site was built pointing at the wrong backend.
 
+// The single hidden tab used to run queued DARS audits, and its safety timer.
+let bgAuditTabId = null, bgCloseTimer = null;
+function closeBgTab() {
+  if (bgCloseTimer) { clearTimeout(bgCloseTimer); bgCloseTimer = null; }
+  if (bgAuditTabId != null) { chrome.tabs.remove(bgAuditTabId).catch(() => {}); bgAuditTabId = null; }
+}
+
 function baseUrl(s) { return (s.apiOverride || s.api || "").replace(/\/$/, ""); }
 
 async function readStore() {
@@ -50,25 +57,40 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Process the audit queue — but ONLY inside a MyPlan tab the user already has
-  // open. Never create a tab. DARS signs each audit request with a per-request
-  // token that only its own page can produce, so audits must run in a real
-  // MyPlan page; if none is open, the queue simply waits until one is.
+  // Run the audit queue in ONE hidden background tab that closes itself when
+  // done. Reuses an already-open MyPlan tab if there is one (and never closes
+  // the user's own tab). Only ever one background tab, no matter how many times
+  // this is called — so 10 programs never means 10 tabs.
   if (msg?.type === "lp-run-queue-bg") {
     (async () => {
       const s = await readStore();
       if (!s.token || !baseUrl(s)) { sendResponse({ ok: false, error: "not-connected" }); return; }
       try {
+        // A MyPlan tab the user already has open? Use it; don't open/close a tab.
         const existing = await chrome.tabs.query({ url: "https://myplan.uw.edu/audit*" });
         if (existing && existing.length) {
           existing.forEach((t) => chrome.tabs.sendMessage(t.id, { type: "lp-run-queue" }));
-          sendResponse({ ok: true, reused: true });
-        } else {
-          sendResponse({ ok: true, noTab: true }); // queued; runs next time MyPlan is open
+          sendResponse({ ok: true, reused: true }); return;
         }
+        // Our hidden tab is already working — re-trigger it, don't open another.
+        if (bgAuditTabId != null) {
+          chrome.tabs.sendMessage(bgAuditTabId, { type: "lp-run-queue" });
+          sendResponse({ ok: true, busy: true }); return;
+        }
+        const tab = await chrome.tabs.create({ url: "https://myplan.uw.edu/audit/#/degree", active: false });
+        bgAuditTabId = tab.id;
+        bgCloseTimer = setTimeout(closeBgTab, 300000); // safety net: close after 5 min
+        sendResponse({ ok: true, opened: true });
       } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
     })();
     return true;
+  }
+
+  // The content script reports the queue is drained — close our hidden tab
+  // promptly (only if it's the one WE opened; never the user's own tab).
+  if (msg?.type === "lp-queue-processed") {
+    if (_sender?.tab?.id != null && _sender.tab.id === bgAuditTabId) closeBgTab();
+    return false;
   }
 
   if (msg?.type === "lp-catalog") {

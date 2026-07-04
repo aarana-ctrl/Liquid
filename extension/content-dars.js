@@ -156,23 +156,35 @@
     } catch (e) { /* non-fatal */ }
   }
 
+  const getQueue = () => new Promise((res) => chrome.runtime.sendMessage({ type: "lp-queue" }, (r) => res((r && r.ok && r.queue) || [])));
+
   let queueRunning = false;
   async function processQueue(manual) {
     if (queueRunning) return;
-    chrome.runtime.sendMessage({ type: "lp-queue" }, async (resp) => {
-      if (!resp || !resp.ok || !resp.queue || !resp.queue.length) { if (manual) toast("No programs queued for auto-audit.", true); return; }
-      queueRunning = true;
-      toast("Auto-running DARS for " + resp.queue.length + " program" + (resp.queue.length > 1 ? "s" : "") + "…", true);
-      for (const item of resp.queue) {
-        try {
-          const ok = await driveNewAudit(item.name, item.level);
-          if (ok) { chrome.runtime.sendMessage({ type: "lp-queue-done", name: item.name }); toast("✓ " + item.name + " audited & synced.", true); }
-          else { toast("Couldn't auto-select “" + item.name + "”. Run it once manually and I'll capture it.", false); }
-          await sleep(2500);
-        } catch (e) { /* keep going with the rest of the queue */ }
-      }
-      queueRunning = false;
-    });
+    const first = await getQueue();
+    if (!first.length) {
+      if (manual) toast("No programs queued for auto-audit.", true);
+      chrome.runtime.sendMessage({ type: "lp-queue-processed" }); // nothing to do → let the hidden tab close
+      return;
+    }
+    queueRunning = true;
+    toast("Auto-running DARS for " + first.length + " program" + (first.length > 1 ? "s" : "") + "…", true);
+    // Drain the queue one at a time, re-checking each pass so programs queued
+    // while we were running are also handled. Remove each item whether it
+    // succeeds or fails, so the queue always empties and the tab can close.
+    let guard = 0;
+    while (guard++ < 60) {
+      const q = await getQueue();
+      if (!q.length) break;
+      const item = q[0];
+      let ok = false;
+      try { ok = await driveNewAudit(item.name, item.level); } catch (e) { /* fail-safe */ }
+      chrome.runtime.sendMessage({ type: "lp-queue-done", name: item.name });
+      toast(ok ? ("✓ " + item.name + " audited & synced.") : ("Couldn't auto-run “" + item.name + "” — try again."), ok);
+      await sleep(2000);
+    }
+    queueRunning = false;
+    chrome.runtime.sendMessage({ type: "lp-queue-processed" }); // queue drained → hidden tab closes
   }
 
   // Initial import once the SPA renders, then watch for program changes.
