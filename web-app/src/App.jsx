@@ -809,21 +809,102 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
 }
 
 // ---- account modal ---------------------------------------------------------
-function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
+const THEMES = [
+  { id: "aurora", name: "Aurora", accent: "#8b7bf0", accent2: "#6aa8ff" },
+  { id: "ocean", name: "Ocean", accent: "#4aa8ff", accent2: "#41e0c8" },
+  { id: "sunset", name: "Sunset", accent: "#ff8a6b", accent2: "#f6c14e" },
+  { id: "forest", name: "Forest", accent: "#48c9a0", accent2: "#9bd66a" },
+  { id: "rose", name: "Rose", accent: "#f472b6", accent2: "#b57bf0" },
+];
+const WIDGET_DEFS = [
+  { key: "audit", label: "Degree Audit", desc: "Progress, credits and GPA card" },
+  { key: "quarter", label: "This Quarter", desc: "Your currently-enrolled courses" },
+  { key: "accountCard", label: "Account card", desc: "Name / email / sign-out on the home page" },
+  { key: "orb", label: "Assistant orb", desc: "The floating radial menu" },
+  { key: "clock", label: "Clock", desc: "Time & location, top-right" },
+];
+export const DEFAULT_SETTINGS = { theme: "aurora", blur: 16, dim: 50, widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
+
+// Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
+function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing }) {
+  const [tab, setTab] = useState("account");
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const setS = (patch) => setSettings((s) => ({ ...s, ...patch }));
+  const setWidget = (k, v) => setSettings((s) => ({ ...s, widgets: { ...s.widgets, [k]: v } }));
+  const w = settings.widgets || {};
   return (
-    <div className="cd-overlay" onClick={onClose}>
-      <div className="island cd-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 380 }}>
-        <div className="cd-head"><div><div className="cd-title">Account</div><div className="cd-sub">Signed in to Liquid</div></div><button className="cd-close" onClick={onClose}>×</button></div>
-        <div className="cd-body">
-          <div className="acct-row"><div className="acct-avatar">{(user.name || "?").slice(0, 1).toUpperCase()}</div><div><b>{user.name}</b><div className="acct-email">{user.email}</div></div></div>
-          <div className="acct-stats">
-            <div><span>Program</span><b>{program.name}</b></div>
-            {snapshot && <div><span>Credits</span><b>{snapshot.audit.earned} / {snapshot.audit.totalRequired}</b></div>}
-            {snapshot && <div><span>GPA</span><b>{snapshot.gpa}</b></div>}
-            <div><span>Last MyPlan sync</span><b>{snapshot?.fetchedAt ? new Date(snapshot.fetchedAt).toLocaleDateString() : "—"}</b></div>
-          </div>
-          <button className="btn" style={{ width: "100%", marginTop: 16 }} onClick={onSignOut}>Sign out</button>
+    <div className="account-page">
+      <div className="ds-inner">
+        <div className="ds-topbar">
+          <div><div className="ds-eyebrow">Account &amp; Settings</div><h2>{user.name || "Your account"}</h2><p>{user.email}</p></div>
+          <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
         </div>
+        <div className="ds-modes">
+          <button className={tab === "account" ? "active" : ""} onClick={() => setTab("account")}>Account</button>
+          <button className={tab === "appearance" ? "active" : ""} onClick={() => setTab("appearance")}>Appearance</button>
+          <button className={tab === "widgets" ? "active" : ""} onClick={() => setTab("widgets")}>Widgets</button>
+        </div>
+
+        {tab === "account" && (
+          <div className="set-scroll">
+            <section className="island set-card">
+              <div className="acct-row"><div className="acct-avatar">{(user.name || "?").slice(0, 1).toUpperCase()}</div><div><b style={{ fontSize: 17 }}>{user.name}</b><div className="acct-email">{user.email}</div></div></div>
+              <div className="acct-stats">
+                <div><span>Program</span><b>{program.name}</b></div>
+                {snapshot && <div><span>Credits</span><b>{snapshot.audit.earned} / {snapshot.audit.totalRequired}</b></div>}
+                {snapshot && <div><span>GPA</span><b>{snapshot.gpa}</b></div>}
+                <div><span>Last MyPlan sync</span><b>{snapshot?.fetchedAt ? new Date(snapshot.fetchedAt).toLocaleString() : "—"}</b></div>
+              </div>
+              <div className="set-actions">
+                <button className="mm-compare" onClick={onForceRefresh}>{syncing ? "Refreshing…" : "⟳ Force refresh from MyPlan"}</button>
+                <button className="set-signout" onClick={onSignOut}>Sign out</button>
+              </div>
+              <p className="set-note">Force refresh re-runs your degree audit in a hidden MyPlan tab that closes itself — no windows to manage.</p>
+            </section>
+          </div>
+        )}
+
+        {tab === "appearance" && (
+          <div className="set-scroll">
+            <section className="island set-card">
+              <h3 className="set-h">Theme</h3>
+              <div className="set-themes">
+                {THEMES.map((t) => (
+                  <button key={t.id} className={`set-theme ${settings.theme === t.id ? "on" : ""}`} onClick={() => setS({ theme: t.id })}>
+                    <span className="set-swatch" style={{ background: `linear-gradient(135deg, ${t.accent}, ${t.accent2})` }} />
+                    <span>{t.name}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+            <section className="island set-card">
+              <h3 className="set-h">Liquid-glass blur <span className="set-val">{settings.blur}px</span></h3>
+              <input type="range" min="0" max="60" value={settings.blur} onChange={(e) => setS({ blur: +e.target.value })} className="set-range" />
+              <p className="set-note">Lower = crisper and more readable; higher = frostier glass.</p>
+              <h3 className="set-h" style={{ marginTop: 22 }}>Background dim <span className="set-val">{settings.dim}%</span></h3>
+              <input type="range" min="0" max="85" value={settings.dim} onChange={(e) => setS({ dim: +e.target.value })} className="set-range" />
+              <p className="set-note">How much the photo behind the glass is darkened.</p>
+            </section>
+          </div>
+        )}
+
+        {tab === "widgets" && (
+          <div className="set-scroll">
+            <section className="island set-card">
+              <h3 className="set-h">Show / hide widgets</h3>
+              {WIDGET_DEFS.map((d) => (
+                <label key={d.key} className="set-toggle">
+                  <div><b>{d.label}</b><span>{d.desc}</span></div>
+                  <input type="checkbox" checked={w[d.key] !== false} onChange={(e) => setWidget(d.key, e.target.checked)} />
+                </label>
+              ))}
+            </section>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1142,6 +1223,20 @@ export default function App() {
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
   const [catalogVersion, setCatalogVersion] = useState(0); // bumps when DARS catalog merges in
+  const [settings, setSettings] = useState(() => {
+    try { return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem("lp_settings") || "{}")) }; } catch { return DEFAULT_SETTINGS; }
+  });
+  useEffect(() => { try { localStorage.setItem("lp_settings", JSON.stringify(settings)); } catch { /* */ } }, [settings]);
+  // Apply appearance settings as CSS variables on the root element.
+  useEffect(() => {
+    const r = document.documentElement;
+    const t = THEMES.find((x) => x.id === settings.theme) || THEMES[0];
+    r.style.setProperty("--accent", t.accent);
+    r.style.setProperty("--accent-2", t.accent2);
+    r.style.setProperty("--glass-blur", (settings.blur ?? 34) + "px");
+    r.style.setProperty("--bg-dim", String((settings.dim ?? 50) / 100));
+  }, [settings]);
+  const wid = settings.widgets || {};
   const [courseTerms, setCourseTerms] = useState({});
   const didAutoSync = useRef(false);
   const toggleBookmark = (b) => setBookmarks((p) => p.some((x) => x.id === b.id && x.level === b.level)
@@ -1284,6 +1379,18 @@ export default function App() {
     enqueueAudit(token, { name: b.name, level: b.level }).catch(() => {});
   };
 
+  // Force-refresh: re-run the CURRENT program's audit in the background (bypasses
+  // the "already audited" skip) so the latest data is pulled without opening MyPlan yourself.
+  const forceRefresh = async () => {
+    const cur = MAJOR_CATALOG.find((m) => m.id === majorId);
+    const items = [{ id: majorId, level: "major", name: cur?.name || majorId }, ...minorIds.map((id) => ({ id, level: "minor", name: MINORS[id]?.name || id }))];
+    if (!token) { setAuditToast("Sign in first to refresh from MyPlan."); return; }
+    for (const b of items) { try { await enqueueAudit(token, { name: b.name, level: b.level }); } catch { /* */ } }
+    try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
+    setAuditToast("Refreshing from MyPlan in the background — a tab opens quietly and closes itself when done.");
+    setTimeout(() => setAuditToast(""), 9000);
+  };
+
   // Explicit "Auto-run DARS": queue one or many programs AND open MyPlan's DARS
   // page so the extension processes the queue right away. Returns a status.
   const [auditToast, setAuditToast] = useState("");
@@ -1327,12 +1434,12 @@ export default function App() {
       <Sky />
       {auditToast && <div className="audit-toast island">{auditToast}</div>}
       <div className="dock-hotzone" aria-hidden />
-      <div className={`dock island ${showDesign ? "tucked" : ""}`}>
-        <button className={view === "plan" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("plan"); }} title="Home">{I.home}</button>
-        <button className={view === "catalog" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("catalog"); }} title="Catalog">{I.search}</button>
-        <button className={showDesign ? "active" : ""} onClick={() => openDesign("plan")} title="Design Studio">{I.pen}</button>
+      <div className={`dock island ${showDesign || showAccount ? "tucked" : ""}`}>
+        <button className={view === "plan" && !showDesign && !showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setView("plan"); }} title="Home">{I.home}</button>
+        <button className={view === "catalog" && !showDesign && !showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setView("catalog"); }} title="Catalog">{I.search}</button>
+        <button className={showDesign ? "active" : ""} onClick={() => { setShowAccount(false); openDesign("plan"); }} title="Design Studio">{I.pen}</button>
         <div className="sep" />
-        <button className={showAccount ? "active" : ""} onClick={() => setShowAccount(true)} title="Account">{I.user}</button>
+        <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
       </div>
 
       <div className="app">
@@ -1342,10 +1449,10 @@ export default function App() {
             <h1>{greet}, {user.name?.split(" ")[0] || "Student"}</h1>
             <p>{mappedCredits} credits mapped across your plan · {prereqLinks} prerequisites linked.</p>
           </div>
-          <AssistantOrb open={orbOpen} onToggle={setOrbOpen} items={dialItems} />
-          <div className="clockwrap"><div className="island clock">
+          {wid.orb !== false && <AssistantOrb open={orbOpen} onToggle={setOrbOpen} items={dialItems} />}
+          {wid.clock !== false && <div className="clockwrap"><div className="island clock">
             <b>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</b><span className="dotsep">•</span><span>Seattle</span>
-          </div></div>
+          </div></div>}
         </div>
 
         <div className="layout">
@@ -1355,12 +1462,12 @@ export default function App() {
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
-            <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={handleSync} syncing={syncing} />
-            <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />
-            <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} />}
+            {wid.quarter !== false && <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />}
+            {wid.accountCard !== false && <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
               <button className="signout" onClick={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); }}>Sign out</button>
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -1398,7 +1505,9 @@ export default function App() {
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {showAccount && (
-        <AccountModal user={user} snapshot={snapshot} program={program}
+        <AccountPage user={user} snapshot={snapshot} program={program}
+          settings={settings} setSettings={setSettings} syncing={syncing}
+          onForceRefresh={forceRefresh}
           onSignOut={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); setShowAccount(false); }}
           onClose={() => setShowAccount(false)} />
       )}

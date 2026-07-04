@@ -99,6 +99,58 @@ export const COURSES = {
   INFO360: { id: "INFO360", title: "Design Methods", credits: 4, category: "core400", prereqs: ["INFO201"] },
   MATH307: { id: "MATH307", title: "Introduction to Differential Equations", credits: 3, category: "math", prereqs: ["MATH126"] },
   MATH324: { id: "MATH324", title: "Advanced Multivariable Calculus", credits: 3, category: "math", prereqs: ["MATH126"] },
+
+  // ---- Broad gen-ed pool (real UW courses) so every area has many options ----
+  // Writing (W-course) — many departments offer W credit.
+  ENGL111: { id: "ENGL111", title: "Composition: Literature", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"] },
+  ENGL131: { id: "ENGL131", title: "Composition: Exposition", credits: 5, category: "english", prereqs: [], gened: ["writing"] },
+  ENGL182: { id: "ENGL182", title: "Composition: Multimodal", credits: 5, category: "english", prereqs: [], gened: ["writing"] },
+  ENGL281: { id: "ENGL281", title: "Intermediate Expository Writing", credits: 5, category: "english", prereqs: [], gened: ["writing"] },
+  HSTAA105:{ id: "HSTAA105", title: "The American Past (W)", credits: 5, category: "social", prereqs: [], gened: ["social", "writing"] },
+  POLS270: { id: "POLS270", title: "Introduction to Political Theory", credits: 5, category: "social", prereqs: [], gened: ["social", "writing"] },
+  PHIL240: { id: "PHIL240", title: "Introduction to Ethics (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"], csRelevant: true, relevanceNote: "Applied ethics for technologists" },
+  COM289:  { id: "COM289",  title: "Communication & Society (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "social", "writing"] },
+  GEOG271: { id: "GEOG271", title: "Geographies of Global Inequality (W)", credits: 5, category: "social", prereqs: [], gened: ["social", "diversity", "writing"] },
+  ENVIR100:{ id: "ENVIR100", title: "Introduction to Environmental Studies (W)", credits: 5, category: "science", prereqs: [], gened: ["science", "writing"] },
+  ANTH210: { id: "ANTH210", title: "Introduction to Medical Anthropology (W)", credits: 5, category: "social", prereqs: [], gened: ["social", "writing"] },
+
+  // Arts & Humanities
+  ENGL242: { id: "ENGL242", title: "Reading Prose Fiction", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  HIST112: { id: "HIST112", title: "The Modern World", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  PHIL102: { id: "PHIL102", title: "Contemporary Moral Problems", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  ARTH203: { id: "ARTH203", title: "Survey of Modern Art", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  MUSIC116:{ id: "MUSIC116", title: "Understanding Music", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  DRAMA103:{ id: "DRAMA103", title: "Theatre Appreciation", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  LING200: { id: "LING200", title: "Introduction to Linguistic Thought", credits: 5, category: "arts", prereqs: [], gened: ["arts"], csRelevant: true, relevanceNote: "Language + computation (NLP)" },
+  CLAS210: { id: "CLAS210", title: "Greek & Roman Classics in English", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+  RELIG201:{ id: "RELIG201", title: "Introduction to World Religions", credits: 5, category: "arts", prereqs: [], gened: ["arts", "diversity"] },
+  SPAN103: { id: "SPAN103", title: "Elementary Spanish", credits: 5, category: "arts", prereqs: [], gened: ["arts"] },
+
+  // Social Sciences
+  ECON201: { id: "ECON201", title: "Introduction to Macroeconomics", credits: 5, category: "social", prereqs: [], gened: ["social"], csRelevant: true },
+  PSYCH202:{ id: "PSYCH202", title: "Biopsychology", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  SOC220:  { id: "SOC220",  title: "Introduction to Sociology", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  GEOG207: { id: "GEOG207", title: "Economic Geography", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  JSIS200: { id: "JSIS200", title: "The Making of the 21st Century", credits: 5, category: "social", prereqs: [], gened: ["social"] },
+  LSJ200:  { id: "LSJ200",  title: "Introduction to Law, Societies & Justice", credits: 5, category: "social", prereqs: [], gened: ["social", "diversity"] },
+  ANTH201: { id: "ANTH201", title: "Principles of Sociocultural Anthropology", credits: 5, category: "social", prereqs: [], gened: ["social", "diversity"] },
+
+  // Natural Sciences
+  BIOL180: { id: "BIOL180", title: "Introductory Biology", credits: 5, category: "science", prereqs: [], gened: ["science"] },
+  CHEM120: { id: "CHEM120", title: "Principles of Chemistry", credits: 5, category: "science", prereqs: [], gened: ["science"] },
+  PHYS114: { id: "PHYS114", title: "General Physics", credits: 4, category: "science", prereqs: [], gened: ["science"] },
+  ASTR101: { id: "ASTR101", title: "Astronomy", credits: 5, category: "science", prereqs: [], gened: ["science"] },
+  OCEAN101:{ id: "OCEAN101", title: "Oceanography", credits: 5, category: "science", prereqs: [], gened: ["science"] },
+  ATMS111: { id: "ATMS111", title: "Global Warming: Understanding the Issues", credits: 5, category: "science", prereqs: [], gened: ["science"] },
+  ESS201:  { id: "ESS201",  title: "The Solid Earth", credits: 5, category: "science", prereqs: [], gened: ["science"] },
+  GENOME361:{ id: "GENOME361", title: "Fundamentals of Genetics", credits: 4, category: "science", prereqs: [], gened: ["science"] },
+  STAT311: { id: "STAT311", title: "Elements of Statistical Methods", credits: 5, category: "science", prereqs: ["MATH124"], gened: ["science"], csRelevant: true, relevanceNote: "Statistics — core for data science" },
+
+  // Diversity (DIV) — additional
+  AES201:  { id: "AES201",  title: "Contemporary American Ethnic Literature", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "arts"] },
+  GWSS250: { id: "GWSS250", title: "Intro to Queer Studies", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
+  AIS102:  { id: "AIS102",  title: "Introduction to American Indian Studies", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
+  CHID250: { id: "CHID250", title: "Special Topics in Diversity", credits: 5, category: "diversity", prereqs: [], gened: ["diversity"] },
 };
 
 // Tag natural-science courses with a gened area for the recommender.
