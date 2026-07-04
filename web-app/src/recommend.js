@@ -85,11 +85,22 @@ export function recommend({ area, remainingMap, taken, planned, satisfied }) {
 export function compareProgram(program, completedSet, ipSet) {
   const remMap = computeRemaining(program, completedSet, ipSet, new Set());
   const prog = degreeProgress(program, completedSet, ipSet);
+  const taken = new Set([...completedSet, ...ipSet]);
   const cats = [];
   for (const r of program.requirements) {
-    if (r.kind === "credits") { const m = remMap[r.area]; cats.push({ label: r.label.replace(/ —.*/, ""), need: r.needCredits, remaining: m.remaining, unit: "cr" }); }
-    else if (r.kind === "choose") { const m = remMap[r.area]; cats.push({ label: r.label.replace(/ \(.*/, ""), need: r.needCount, remaining: m.remaining, unit: "courses" }); }
-    else if (r.kind === "all") { const done = r.courses.filter((id) => completedSet.has(id) || ipSet.has(id)).length; cats.push({ label: r.label, need: r.courses.length, remaining: r.courses.length - done, unit: "courses" }); }
+    if (r.kind === "credits") {
+      const m = remMap[r.area];
+      // courses that satisfy this area (still-needed ones first) — for detailed view
+      const pool = poolForArea(r.area).filter((c) => !taken.has(c.id)).map((c) => c.id);
+      cats.push({ label: r.label.replace(/ —.*/, ""), need: r.needCredits, remaining: m.remaining, unit: "cr", courses: pool.slice(0, 12) });
+    } else if (r.kind === "choose") {
+      const m = remMap[r.area];
+      const pool = poolForArea(r.area).filter((c) => !taken.has(c.id)).map((c) => c.id);
+      cats.push({ label: r.label.replace(/ \(.*/, ""), need: r.needCount, remaining: m.remaining, unit: "courses", courses: pool.slice(0, 12) });
+    } else if (r.kind === "all") {
+      const done = r.courses.filter((id) => taken.has(id)).length;
+      cats.push({ label: r.label, need: r.courses.length, remaining: r.courses.length - done, unit: "courses", courses: r.courses.filter((id) => !taken.has(id)) });
+    }
   }
   return { id: program.id, name: program.name, total: prog.total, earned: prog.earned, remaining: prog.remaining, pct: prog.pct, cats };
 }
@@ -111,7 +122,7 @@ export function compareFromAudit(meta, audit) {
       const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
       const have = (r.earnedCr || 0) + (r.ipCr || 0);
       const need = isCourses ? r.needsCourses : (have + (r.needsCr || 0));
-      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 80), need, remaining, unit: isCourses ? "courses" : "cr" };
+      return { label: r.label.replace(/\s*\(\d+ cr.*/i, "").slice(0, 90), need, remaining, unit: isCourses ? "courses" : "cr", detail: r.label, courses: [] };
     })
     .sort((x, y) => y.remaining - x.remaining);
 

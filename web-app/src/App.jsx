@@ -670,8 +670,9 @@ function bookmarkCard(bm, completedSet, ipSet, chosenSet, programs) {
   return { ...compareProgram(resolveProgram(bm.id), completedSet, withPlanned), exact: false, needsAudit: true };
 }
 
-function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded, bookmarks, toggleBookmark }) {
+function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded, bookmarks, toggleBookmark, runAuditNow }) {
   const [tab, setTab] = useState("majors");
+  const [detailed, setDetailed] = useState(false);
   const [q, setQ] = useState("");
 
   // Programs the student has actually run through DARS, split by level. These are
@@ -756,6 +757,13 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
           </div>
         </aside>
         <div className="cmp-results">
+          <div className="cmp-toolbar">
+            {runAuditNow && (() => {
+              const estimates = results.filter((r) => !r.exact).map((r) => ({ id: r.id, level: tab === "majors" ? "major" : "minor", name: r.name }));
+              return <button className="mm-compare" disabled={!estimates.length} onClick={() => runAuditNow(estimates)}>⟳ Auto-run DARS on all{estimates.length ? ` (${estimates.length})` : ""}</button>;
+            })()}
+            <label className="cmp-detail-toggle"><input type="checkbox" checked={detailed} onChange={(e) => setDetailed(e.target.checked)} /> Detailed view — show required courses</label>
+          </div>
           <div className="cmp-grid">
             {results.map((r, i) => {
               const open = r.cats.filter((c) => c.remaining > 0).sort((a, b) => b.remaining - a.remaining);
@@ -770,12 +778,25 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
                   <div className="bar"><div style={{ width: `${Math.min(100, r.pct)}%` }} /></div>
                   <div className="cmp-cats">
                     {open.map((c, j) => (
-                      <div key={c.label + j} className="cmp-cat"><span>{c.label}</span><b>{c.remaining}{c.unit === "cr" ? " cr" : c.unit === "courses" ? " courses" : ""}</b></div>
+                      <div key={c.label + j} className={`cmp-cat-wrap ${detailed ? "det" : ""}`}>
+                        <div className="cmp-cat"><span>{c.label}</span><b>{c.remaining}{c.unit === "cr" ? " cr" : c.unit === "courses" ? " courses" : ""}</b></div>
+                        {detailed && (
+                          <div className="cmp-courses">
+                            {(c.courses && c.courses.length)
+                              ? c.courses.map((id) => (
+                                  <div key={id} className="cmp-course"><b>{id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
+                                ))
+                              : <div className="cmp-course none">{c.detail ? c.detail : "Specific courses come from this program's DARS audit."}</div>}
+                          </div>
+                        )}
+                      </div>
                     ))}
                     {open.length === 0 && <div className="cmp-cat done">All requirements met 🎉</div>}
                     {met.length > 0 && open.length > 0 && <div className="cmp-cat met">✓ {met.length} requirement{met.length > 1 ? "s" : ""} already satisfied</div>}
                   </div>
-                  {r.needsAudit && <div className="cmp-caveat">Estimate — specific required courses aren't modeled. Run this program's DARS audit for exact requirements.</div>}
+                  {r.needsAudit && runAuditNow && (
+                    <button className="cmp-audit-btn" onClick={() => runAuditNow({ id: r.id, level: tab === "majors" ? "major" : "minor", name: r.name })}>⟳ Auto-run DARS for exact requirements</button>
+                  )}
                 </div>
               );
             })}
@@ -810,7 +831,7 @@ function AccountModal({ user, snapshot, program, onSignOut, onClose }) {
 
 // ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
 function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose,
-  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit }) {
+  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
@@ -903,12 +924,12 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
         {mode === "compare" && (
           <CompareView embedded completedSet={completedSet} ipSet={ipSet} currentMajorId={majorId}
             currentMinorIds={minorIds} programs={programs} onClose={() => setMode("plan")}
-            bookmarks={bookmarks} toggleBookmark={toggleBookmark} />
+            bookmarks={bookmarks} toggleBookmark={toggleBookmark} runAuditNow={runAuditNow} />
         )}
 
         {mode === "saved" && (
           <SavedPanel bookmarks={bookmarks} toggleBookmark={toggleBookmark} completedSet={completedSet}
-            ipSet={ipSet} chosenSet={chosenSet} programs={programs} requestAudit={requestAudit}
+            ipSet={ipSet} chosenSet={chosenSet} programs={programs} requestAudit={runAuditNow}
             onBrowse={() => setMode("programs")} />
         )}
       </div>
@@ -1150,6 +1171,28 @@ export default function App() {
   }, []);
   useEffect(() => { try { if (user && token) localStorage.setItem("lp_session", JSON.stringify({ user, token })); } catch { /* ignore */ } }, [user, token]);
 
+  // Instant local restore on mount — bookmarks + program selections survive a
+  // refresh even if the backend is offline or an older version drops fields.
+  useEffect(() => {
+    try {
+      const lp = JSON.parse(localStorage.getItem("lp_plan") || "null");
+      if (lp) {
+        if (Array.isArray(lp.bookmarks)) setBookmarks(lp.bookmarks);
+        if (lp.majorId) { registerMajor(lp.majorId, lp.majorName); setMajorId(lp.majorId); }
+        if (Array.isArray(lp.minorIds)) setMinorIds(lp.minorIds);
+        if (Array.isArray(lp.chosen)) setChosen(lp.chosen);
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  // Mirror plan state to localStorage whenever it changes (client-side durability).
+  useEffect(() => {
+    try {
+      const majorName = (MAJOR_CATALOG.find((m) => m.id === majorId) || {}).name || "";
+      localStorage.setItem("lp_plan", JSON.stringify({ chosen, completed, inProgress, schedule, majorId, majorName, minorIds, bookmarks }));
+    } catch { /* ignore */ }
+  }, [chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks]);
+
   // Load the comprehensive UW program catalog (scraped from DARS by the extension)
   // and merge it into the pickers so every major/minor variant is selectable.
   useEffect(() => {
@@ -1175,7 +1218,9 @@ export default function App() {
         }
         if (plan.majorId) { registerMajor(plan.majorId, plan.majorName); setMajorId(plan.majorId); }
         if (Array.isArray(plan.minorIds)) setMinorIds(plan.minorIds);
-        if (Array.isArray(plan.bookmarks)) setBookmarks(plan.bookmarks);
+        // Only let the backend override local bookmarks if it actually has some —
+        // a stale backend that drops the field must not wipe the local cache.
+        if (Array.isArray(plan.bookmarks) && plan.bookmarks.length) setBookmarks(plan.bookmarks);
       }
       if (snap) { setSnapshot(snap); if (snap.terms) setCourseTerms((t) => ({ ...t, ...snap.terms })); }
       setLoaded(true);
@@ -1239,6 +1284,22 @@ export default function App() {
     enqueueAudit(token, { name: b.name, level: b.level }).catch(() => {});
   };
 
+  // Explicit "Auto-run DARS": queue one or many programs AND open MyPlan's DARS
+  // page so the extension processes the queue right away. Returns a status.
+  const [auditToast, setAuditToast] = useState("");
+  const runAuditNow = async (items) => {
+    const list = (Array.isArray(items) ? items : [items]).filter((b) => b?.name && !findAudit(b.name, snapshot?.programs, b.level));
+    if (!token) { setAuditToast("Sign in first to auto-run DARS."); return; }
+    if (!list.length) { setAuditToast("These already have exact DARS data ✓"); return; }
+    setAuditToast(`Queuing ${list.length} program${list.length > 1 ? "s" : ""}…`);
+    let ok = 0;
+    for (const b of list) { try { const r = await enqueueAudit(token, { name: b.name, level: b.level }); if (r) ok++; } catch { /* */ } }
+    // Open MyPlan DARS so the extension runs the queue (needs the extension + sign-in).
+    window.open("https://myplan.uw.edu/audit/#/degree", "_blank");
+    setAuditToast(ok ? `Opened MyPlan — the extension is running DARS for ${ok} program${ok > 1 ? "s" : ""}. Results appear here automatically.` : "Couldn't reach the audit queue. Make sure you're signed in and the backend is up.");
+    setTimeout(() => setAuditToast(""), 9000);
+  };
+
   if (!user) return <Login onSignIn={handleSignIn} backendOnline={backendOnline} oidcEnabled={oidcEnabled} />;
 
   const plannedCount = [...planIds].filter((id) => !completedSet.has(id) && !ipSet.has(id) && schedule[id] != null).length;
@@ -1261,6 +1322,7 @@ export default function App() {
   return (
     <>
       <Sky />
+      {auditToast && <div className="audit-toast island">{auditToast}</div>}
       <div className="dock-hotzone" aria-hidden />
       <div className={`dock island ${showDesign ? "tucked" : ""}`}>
         <button className={view === "plan" && !showDesign ? "active" : ""} onClick={() => { setShowDesign(false); setView("plan"); }} title="Home">{I.home}</button>
@@ -1329,7 +1391,7 @@ export default function App() {
           onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); requestAudit({ id, level: "major", name: (MAJOR_CATALOG.find((m) => m.id === id) || {}).name || id }); }}
           onToggleMinor={(id) => { setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (MINORS[id]) requestAudit({ id, level: "minor", name: MINORS[id].name }); }}
           programs={snapshot?.programs}
-          bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit}
+          bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit} runAuditNow={runAuditNow}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {showAccount && (

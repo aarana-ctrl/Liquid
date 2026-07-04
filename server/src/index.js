@@ -19,8 +19,22 @@ const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
 
+// Robust CORS: allow explicitly-configured origins, PLUS any *.vercel.app
+// deployment and localhost, so a misconfigured CORS_ORIGINS can't silently break
+// the web app (every browser→API call was failing before because this origin
+// wasn't whitelisted). Same-origin / non-browser callers (no Origin) pass too.
 const origins = (process.env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-app.use(cors({ origin: origins.length ? origins : true }));
+const corsCheck = (origin, cb) => {
+  if (!origin) return cb(null, true);
+  if (origins.includes(origin)) return cb(null, true);
+  try {
+    const h = new URL(origin).hostname;
+    if (/\.vercel\.app$/i.test(h) || h === "localhost" || h === "127.0.0.1") return cb(null, true);
+  } catch { /* fall through */ }
+  if (!origins.length) return cb(null, true); // fully permissive when unconfigured
+  return cb(null, false);
+};
+app.use(cors({ origin: corsCheck }));
 
 const DEV_LOGIN = !PROD; // allow demo login outside prod
 
