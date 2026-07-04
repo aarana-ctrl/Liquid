@@ -106,15 +106,23 @@ app.put("/api/plan", auth, async (req, res) => {
 
 // ---- Program catalog (the full UW major/minor list, scraped by the extension
 // from the live DARS picker so it's always comprehensive and current) --------
+// NOTE: Firestore reserves document ids matching /^__.*__$/, so the catalog key
+// must NOT be wrapped in double underscores.
+const CATALOG_KEY = "catalog_global";
 app.get("/api/programs", cors({ origin: true }), async (req, res) => {
-  const c = await getSnapshot("__catalog__");
-  res.json({ majors: c?.majors || [], minors: c?.minors || [], updatedAt: c?.updatedAt || null });
+  try {
+    const c = await getSnapshot(CATALOG_KEY);
+    res.json({ majors: c?.majors || [], minors: c?.minors || [], updatedAt: c?.updatedAt || null });
+  } catch (e) {
+    console.error("programs GET failed:", e.message);
+    res.json({ majors: [], minors: [], updatedAt: null }); // never break the app
+  }
 });
 app.options("/api/programs", cors({ origin: true }));
 app.post("/api/programs", cors({ origin: true }), auth, async (req, res) => {
   const { majors, minors } = req.body || {};
   if (!Array.isArray(majors) || !Array.isArray(minors)) return res.status(400).json({ error: "majors and minors arrays required" });
-  await saveSnapshot("__catalog__", { majors: majors.slice(0, 600), minors: minors.slice(0, 400), updatedAt: new Date().toISOString() });
+  await saveSnapshot(CATALOG_KEY, { majors: majors.slice(0, 600), minors: minors.slice(0, 400), updatedAt: new Date().toISOString() });
   res.json({ ok: true, majors: majors.length, minors: minors.length });
 });
 
