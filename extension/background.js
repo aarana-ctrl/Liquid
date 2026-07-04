@@ -4,8 +4,6 @@
 // API base the web app reported — so the extension works even if the deployed
 // site was built pointing at the wrong backend.
 
-let bgAuditTabId = null; // hidden tab used to run queued DARS audits in the background
-
 function baseUrl(s) { return (s.apiOverride || s.api || "").replace(/\/$/, ""); }
 
 async function readStore() {
@@ -52,33 +50,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // Run queued audits in a hidden background tab (no focus stolen, no popup).
+  // Process the audit queue — but ONLY inside a MyPlan tab the user already has
+  // open. Never create a tab. DARS signs each audit request with a per-request
+  // token that only its own page can produce, so audits must run in a real
+  // MyPlan page; if none is open, the queue simply waits until one is.
   if (msg?.type === "lp-run-queue-bg") {
     (async () => {
       const s = await readStore();
       if (!s.token || !baseUrl(s)) { sendResponse({ ok: false, error: "not-connected" }); return; }
       try {
-        // If a MyPlan audit tab is already open, let it process passively.
         const existing = await chrome.tabs.query({ url: "https://myplan.uw.edu/audit*" });
-        if (existing && existing.length) { chrome.tabs.sendMessage(existing[0].id, { type: "lp-run-queue" }); sendResponse({ ok: true, reused: true }); return; }
-        if (bgAuditTabId) { try { await chrome.tabs.get(bgAuditTabId); sendResponse({ ok: true, busy: true }); return; } catch { bgAuditTabId = null; } }
-        const tab = await chrome.tabs.create({ url: "https://myplan.uw.edu/audit/#/degree", active: false });
-        bgAuditTabId = tab.id;
-        // Safety cleanup: close the hidden tab after processing has had time.
-        setTimeout(() => { if (bgAuditTabId) { chrome.tabs.remove(bgAuditTabId).catch(() => {}); bgAuditTabId = null; } }, 180000);
-        sendResponse({ ok: true, opened: true });
+        if (existing && existing.length) {
+          existing.forEach((t) => chrome.tabs.sendMessage(t.id, { type: "lp-run-queue" }));
+          sendResponse({ ok: true, reused: true });
+        } else {
+          sendResponse({ ok: true, noTab: true }); // queued; runs next time MyPlan is open
+        }
       } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
     })();
     return true;
-  }
-
-  // The background audit tab reports it finished — close it promptly.
-  if (msg?.type === "lp-queue-processed") {
-    if (_sender?.tab?.id && _sender.tab.id === bgAuditTabId) {
-      chrome.tabs.remove(bgAuditTabId).catch(() => {});
-      bgAuditTabId = null;
-    }
-    return false;
   }
 
   if (msg?.type === "lp-catalog") {

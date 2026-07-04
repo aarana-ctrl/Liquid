@@ -1294,11 +1294,11 @@ export default function App() {
     setAuditToast(`Queuing ${list.length} program${list.length > 1 ? "s" : ""}…`);
     let ok = 0;
     for (const b of list) { try { const r = await enqueueAudit(token, { name: b.name, level: b.level }); if (r) ok++; } catch { /* */ } }
-    // Ask the extension to run the queue in a hidden background tab — no popup
-    // window, no focus stolen. The extension posts results back automatically.
+    // Ask the extension to process the queue in a MyPlan tab you already have
+    // open — it never opens a tab. If none is open, it runs next time you visit.
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
     setAuditToast(ok
-      ? `Queued ${ok} program${ok > 1 ? "s" : ""} — running DARS in the background. Exact numbers appear here automatically in a moment.`
+      ? `Queued ${ok} program${ok > 1 ? "s" : ""} — Liquid runs these automatically in your MyPlan tab (or next time you open MyPlan). No new tabs.`
       : "Couldn't reach the audit queue. Make sure you're signed in and the backend is up.");
     setTimeout(() => setAuditToast(""), 9000);
   };
