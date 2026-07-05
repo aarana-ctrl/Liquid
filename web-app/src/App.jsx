@@ -442,7 +442,7 @@ function CourseBrowser({ program, planIds, completedSet, ipSet, chosenSet, addCh
 
 // ---- side cards ------------------------------------------------------------
 const DARS_AUDIT_URL = "https://myplan.uw.edu/audit/#/degree";
-function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing }) {
+function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing, onDetailed }) {
   // capped progress: over-fulfilled categories don't inflate the percentage
   const { earned, total, pct } = degreeProgress(program, completedSet, ipSet);
   return (
@@ -456,14 +456,102 @@ function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing }
         <span className="ontrack"><i />{pct >= 100 ? "Complete" : "On track"}</span>
       </div>
       <button className="resync" onClick={onResync} disabled={syncing}>{syncing ? "Reading MyPlan…" : snapshot ? "Re-sync MyPlan (DARS)" : "Connect & pull from MyPlan"}</button>
-      <a className="audit-link" href={DARS_AUDIT_URL} target="_blank" rel="noreferrer">Open my DARS audit ↗</a>
+      <button className="resync ghost" onClick={onDetailed}>Open detailed view</button>
+    </div>
+  );
+}
+
+// ---- Detailed DARS audit — full breakdown in the glass theme ----------------
+function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const a = snapshot?.audit || {};
+  const reqs = snapshot?.requirements || [];
+  const terms = courseTerms || snapshot?.terms || {};
+  const earned = snapshot?.earned || [...completedSet];
+  const ipList = snapshot?.inProgress || [...ipSet];
+  const total = a.totalRequired || 180;
+  const earnedCr = a.earned ?? 0;
+  const pct = total ? Math.round((earnedCr / total) * 100) : 0;
+  const termLabel = (t) => t === "PRE" ? "AP / Transfer / Pre-college" : (parseQ(t) != null ? qLabelAbs(parseQ(t)) : (t || "Other"));
+  const fmtId = (id) => id.replace(/([A-Z])(\d)/, "$1 $2");
+  // group completed courses by term (most recent first)
+  const byTerm = {};
+  earned.forEach((id) => { const t = terms[id] || "PRE"; (byTerm[t] = byTerm[t] || []).push(id); });
+  const termKeys = Object.keys(byTerm).sort((x, y) => {
+    const ax = x === "PRE" ? -1 : (parseQ(x) ?? -1), ay = y === "PRE" ? -1 : (parseQ(y) ?? -1); return ay - ax;
+  });
+  return (
+    <div className="account-page detail-audit">
+      <Sky />
+      <div className="ds-inner">
+        <div className="ds-topbar">
+          <div>
+            <div className="ds-eyebrow">Degree Audit · DARS</div>
+            <h2>{snapshot?.program || program?.name || "Degree"}</h2>
+            <p>{snapshot?.catalogYear ? `Catalog ${snapshot.catalogYear} · ` : ""}{snapshot?.gpa ? `GPA ${snapshot.gpa} · ` : ""}{earnedCr} / {total} cr · {pct}% complete{a.inProgress ? ` · ${a.inProgress} in progress` : ""}</p>
+          </div>
+          <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
+        </div>
+        <div className="set-scroll" style={{ maxWidth: 940 }}>
+          <section className="island set-card">
+            <div className="da-progress"><b>{pct}%</b> toward your degree · <span>{total - earnedCr} cr remaining</span></div>
+            <div className="bar" style={{ height: 9 }}><div style={{ width: `${Math.min(100, pct)}%` }} /></div>
+          </section>
+
+          <section className="island set-card">
+            <h3 className="set-h">Requirements <span className="set-val">{reqs.length}</span></h3>
+            {reqs.length === 0 && <div className="rb-empty">Run a DARS sync to load your full requirement breakdown.</div>}
+            {reqs.map((r, i) => {
+              const isCourses = r.needsCourses != null && r.needsCr == null;
+              const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
+              const met = remaining <= 0;
+              return (
+                <div key={i} className={`da-req ${met ? "met" : ""}`}>
+                  <span className={`da-status ${met ? "ok" : "no"}`}>{met ? "✓" : "○"}</span>
+                  <span className="da-label">{r.label}</span>
+                  <b className="da-need">{met ? "met" : `${remaining} ${isCourses ? "course" + (remaining > 1 ? "s" : "") : "cr"} left`}</b>
+                </div>
+              );
+            })}
+          </section>
+
+          <section className="island set-card">
+            <h3 className="set-h">Courses completed <span className="set-val">{earned.length}</span></h3>
+            {termKeys.map((t) => (
+              <div key={t} className="da-term">
+                <div className="da-term-h">{termLabel(t)} <span>{byTerm[t].length}</span></div>
+                {byTerm[t].map((id) => (
+                  <div key={id} className="da-course"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
+                ))}
+              </div>
+            ))}
+          </section>
+
+          {ipList.length > 0 && (
+            <section className="island set-card">
+              <h3 className="set-h">In progress <span className="set-val">{ipList.length}</span></h3>
+              {ipList.map((id) => (
+                <div key={id} className="da-course"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
+              ))}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 function ThisQuarter({ ipSet, courseTerms }) {
-  const list = [...ipSet].filter((id) => COURSES[id]);
+  const terms = courseTerms || {};
+  const cur = effectiveCurrentAbs(ipSet, terms);
+  // Only courses actually in the current quarter — not past-quarter or dropped
+  // ones. (A course with no recorded term is treated as current.)
+  const list = [...ipSet].filter((id) => COURSES[id]).filter((id) => { const a = parseQ(terms[id]); return a == null || a === cur; });
   const cr = list.reduce((s, id) => s + COURSES[id].credits, 0);
-  const curLabel = qLabelAbs(effectiveCurrentAbs(ipSet, courseTerms || {}));
+  const curLabel = qLabelAbs(cur);
   return (
     <div className="island card">
       <div className="eyebrow">This Quarter <span className="pill-sm">{cr} cr</span></div>
@@ -838,6 +926,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
   const w = settings.widgets || {};
   return (
     <div className="account-page">
+      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div><div className="ds-eyebrow">Account &amp; Settings</div><h2>{user.name || "Your account"}</h2><p>{user.email}</p></div>
@@ -934,6 +1023,7 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
 
   return (
     <div className="design-studio">
+      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -1219,6 +1309,7 @@ export default function App() {
   const [showDesign, setShowDesign] = useState(false);
   const [designMode, setDesignMode] = useState("plan"); // plan | programs | compare (studio tabs)
   const [showAccount, setShowAccount] = useState(false);
+  const [showDetail, setShowDetail] = useState(false);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
@@ -1385,7 +1476,8 @@ export default function App() {
     const cur = MAJOR_CATALOG.find((m) => m.id === majorId);
     const items = [{ id: majorId, level: "major", name: cur?.name || majorId }, ...minorIds.map((id) => ({ id, level: "minor", name: MINORS[id]?.name || id }))];
     if (!token) { setAuditToast("Sign in first to refresh from MyPlan."); return; }
-    for (const b of items) { try { await enqueueAudit(token, { name: b.name, level: b.level }); } catch { /* */ } }
+    // force:true so it re-runs even though we already have this program's audit
+    for (const b of items) { try { await enqueueAudit(token, { name: b.name, level: b.level, force: true }); } catch { /* */ } }
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
     setAuditToast("Refreshing from MyPlan in the background — a tab opens quietly and closes itself when done.");
     setTimeout(() => setAuditToast(""), 9000);
@@ -1434,12 +1526,12 @@ export default function App() {
       <Sky />
       {auditToast && <div className="audit-toast island">{auditToast}</div>}
       <div className="dock-hotzone" aria-hidden />
-      <div className={`dock island ${showDesign || showAccount ? "tucked" : ""}`}>
-        <button className={view === "plan" && !showDesign && !showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setView("plan"); }} title="Home">{I.home}</button>
-        <button className={view === "catalog" && !showDesign && !showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setView("catalog"); }} title="Catalog">{I.search}</button>
-        <button className={showDesign ? "active" : ""} onClick={() => { setShowAccount(false); openDesign("plan"); }} title="Design Studio">{I.pen}</button>
+      <div className={`dock island ${showDesign || showAccount || showDetail ? "tucked" : ""}`}>
+        <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setView("plan"); }} title="Home">{I.home}</button>
+        <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setView("catalog"); }} title="Catalog">{I.search}</button>
+        <button className={showDesign ? "active" : ""} onClick={() => { setShowAccount(false); setShowDetail(false); openDesign("plan"); }} title="Design Studio">{I.pen}</button>
         <div className="sep" />
-        <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
+        <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowDetail(false); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
       </div>
 
       <div className="app">
@@ -1462,7 +1554,7 @@ export default function App() {
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
-            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} />}
+            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} onDetailed={() => setShowDetail(true)} />}
             {wid.quarter !== false && <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />}
             {wid.accountCard !== false && <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
@@ -1503,6 +1595,10 @@ export default function App() {
           programs={snapshot?.programs}
           bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit} runAuditNow={runAuditNow}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
+      )}
+      {showDetail && (
+        <DetailedAuditPage snapshot={snapshot} program={program} completedSet={completedSet} ipSet={ipSet}
+          courseTerms={courseTerms} onClose={() => setShowDetail(false)} />
       )}
       {showAccount && (
         <AccountPage user={user} snapshot={snapshot} program={program}

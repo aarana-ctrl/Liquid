@@ -146,17 +146,19 @@ app.get("/api/audit-queue", auth, async (req, res) => {
   res.json({ queue: plan.auditQueue || [] });
 });
 app.post("/api/audit-queue", auth, async (req, res) => {
-  const { name, level } = req.body || {};
+  const { name, level, force } = req.body || {};
   if (!name) return res.status(400).json({ error: "name required" });
   const plan = (await getPlan(req.user.sub)) || {};
   const queue = plan.auditQueue || [];
-  // skip if already audited or already queued
+  // Normally skip programs we already have exact data for; `force` (used by
+  // "Force refresh") re-queues them so the audit re-runs with fresh data.
   const snap = await getSnapshot(req.user.sub);
   const audited = snap?.programs && Object.values(snap.programs).some((p) => nameMatch(p.program, name));
   const exists = queue.some((q) => normName(q.name) === normName(name));
-  if (!audited && !exists) queue.push({ name, level: level || "major", requestedAt: Date.now() });
+  const add = (force || !audited) && !exists;
+  if (add) queue.push({ name, level: level || "major", requestedAt: Date.now() });
   await savePlan(req.user.sub, { ...plan, auditQueue: queue });
-  res.json({ queue, added: !audited && !exists });
+  res.json({ queue, added: add });
 });
 app.post("/api/audit-queue/done", auth, async (req, res) => {
   const { name } = req.body || {};
