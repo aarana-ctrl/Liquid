@@ -47,6 +47,14 @@ function auth(req, res, next) {
   catch { return res.status(401).json({ error: "invalid token" }); }
 }
 
+// Accounts allowed to publish the shared course catalog (comma-separated env
+// override, else the app maintainer). Everyone else only reads it.
+const DEV_EMAILS = (process.env.DEV_EMAILS || "aarana@uw.edu").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+function devOnly(req, res, next) {
+  if (DEV_EMAILS.includes(String(req.user?.email || "").toLowerCase())) return next();
+  return res.status(403).json({ error: "not authorized to publish the shared catalog" });
+}
+
 app.get("/health", (_req, res) => res.json({ ok: true, devLogin: DEV_LOGIN, oidc: enabledProviders(), store: STORE_KIND, time: new Date().toISOString() }));
 
 // ---- SSO via OIDC (Google → UW NetID, or direct UW) ------------------------
@@ -151,7 +159,7 @@ app.get("/api/courses-catalog", cors({ origin: true }), async (req, res) => {
 app.options("/api/courses-catalog", cors({ origin: true }));
 // The extension streams the catalog one chunk at a time, then finalizes with
 // { done:true, chunks:N }. Each chunk is stored under its own key.
-app.post("/api/courses-catalog", cors({ origin: true }), auth, async (req, res) => {
+app.post("/api/courses-catalog", cors({ origin: true }), auth, devOnly, async (req, res) => {
   try {
     const { chunk, courses, done, chunks } = req.body || {};
     if (done) {

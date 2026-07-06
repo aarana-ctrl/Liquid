@@ -1116,6 +1116,10 @@ function CourseDetailsPage({ courseId, onClose }) {
   );
 }
 
+// Only these accounts can rebuild/publish the shared course catalog. Everyone
+// else just loads the published catalog from the server automatically.
+const DEV_EMAILS = ["aarana@uw.edu"];
+
 const THEMES = [
   { id: "aurora", name: "Aurora", accent: "#8b7bf0", accent2: "#6aa8ff" },
   { id: "ocean", name: "Ocean", accent: "#4aa8ff", accent2: "#41e0c8" },
@@ -1143,6 +1147,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
   const setS = (patch) => setSettings((s) => ({ ...s, ...patch }));
   const setWidget = (k, v) => setSettings((s) => ({ ...s, widgets: { ...s.widgets, [k]: v } }));
   const w = settings.widgets || {};
+  const isDev = DEV_EMAILS.includes((user?.email || "").toLowerCase());
   return (
     <div className="account-page">
       <Sky />
@@ -1177,16 +1182,22 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
             <section className="island set-card">
               <h3 className="set-h">Course catalog</h3>
               <div className="acct-stats">
-                <div><span>Courses loaded</span><b>{(catalogInfo?.count || 0).toLocaleString()}</b></div>
-                <div><span>Last rebuilt</span><b>{catalogInfo?.updatedAt ? new Date(catalogInfo.updatedAt).toLocaleDateString() : "—"}</b></div>
+                <div><span>Courses available</span><b>{(catalogInfo?.count || 0).toLocaleString()}</b></div>
+                <div><span>Last updated</span><b>{catalogInfo?.updatedAt ? new Date(catalogInfo.updatedAt).toLocaleDateString() : "—"}</b></div>
               </div>
-              <div className="set-actions">
-                <button className="mm-compare" onClick={startScrape} disabled={scrape?.running}>
-                  {scrape?.running ? `Rebuilding… ${Math.round(scrape.pct)}%` : "⟳ Rebuild full course catalog"}
-                </button>
-              </div>
-              {scrape?.running && <div className="ap-track" style={{ marginTop: 4 }}><div className="ap-fill" style={{ width: `${scrape.pct}%` }} /></div>}
-              <p className="set-note">Pulls every UW-Seattle course from MyPlan (using your signed-in session) so the course pickers are complete. Takes a minute; a progress bar tracks it. Requires an active MyPlan session.</p>
+              {isDev ? (
+                <>
+                  <div className="set-actions">
+                    <button className="mm-compare" onClick={startScrape} disabled={scrape?.running}>
+                      {scrape?.running ? `Rebuilding… ${Math.round(scrape.pct)}%` : "⟳ Rebuild shared course catalog"}
+                    </button>
+                  </div>
+                  {scrape?.running && <div className="ap-track" style={{ marginTop: 4 }}><div className="ap-fill" style={{ width: `${scrape.pct}%` }} /></div>}
+                  <p className="set-note"><b>Developer control.</b> Pulls every UW-Seattle course from MyPlan using your session and publishes it to the shared server, so every Liquid user gets the full catalog with nothing to do on their end. Rerun this whenever the catalog changes. Requires an active MyPlan session.</p>
+                </>
+              ) : (
+                <p className="set-note">The full UW-Seattle course catalog loads automatically from Liquid — kept up to date for you, nothing to rebuild.</p>
+              )}
             </section>
           </div>
         )}
@@ -1886,7 +1897,7 @@ export default function App() {
     if (ok) { setAuditNeedsLogin(false); setAuditRunning(true); setAuditProgress(6); }
     startAuditPolling();
     setAuditToast(ok
-      ? `Running DARS for ${ok} program${ok > 1 ? "s" : ""} in the background — a MyPlan tab opens quietly and closes itself when done. Exact numbers appear here automatically.`
+      ? `Running DARS for ${ok} program${ok > 1 ? "s" : ""} — exact numbers appear here automatically.`
       : "Couldn't reach the audit queue. Make sure you're signed in and the backend is up.");
     setTimeout(() => setAuditToast(""), 10000);
   };
