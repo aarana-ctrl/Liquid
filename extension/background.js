@@ -120,19 +120,38 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           description: d.course_description, offered: d.course_offered, prereq: d.prereq_string,
           gpaDistro: d.gpa_distro || [], concurrent: d.concurrent_courses || [] }); }
       } catch (e) { /* */ }
-      // 2) MyPlan — sections with instructors + meeting times
+      // 2) MyPlan — sections with instructors, meeting times, and live seats.
+      // MyPlan returns up to two terms (the current + next quarter) — expose both
+      // so the app can show timings + seats for the quarters you can plan.
       let profNames = [];
       try {
         const r = await fetch("https://course-app-api.planning.sis.uw.edu/api/courses/" + id + "/details", { credentials: "include" });
         if (r.ok) {
           const d = await r.json();
-          const t = d.courseOfferingInstitutionList && d.courseOfferingInstitutionList[0] && d.courseOfferingInstitutionList[0].courseOfferingTermList && d.courseOfferingInstitutionList[0].courseOfferingTermList[0];
-          const acts = (t && t.activityOfferingItemList) || [];
-          const lects = acts.filter((s) => s.instructor && s.instructor.trim() && /lecture/i.test(s.activityOfferingType || ""));
-          data.term = t && t.term ? (t.term.termLabel + " " + t.term.year) : "";
-          data.sections = lects.map((s) => ({ code: s.code, instructor: s.instructor,
-            meet: (s.meetingDetailsList || []).map((m) => `${m.days || ""} ${m.time || ""}${m.building ? " · " + m.building + " " + (m.room || "") : ""}`.trim()) }));
-          profNames = [...new Set(lects.map((s) => s.instructor))];
+          const inst = d.courseOfferingInstitutionList && d.courseOfferingInstitutionList[0];
+          const termList = (inst && inst.courseOfferingTermList) || [];
+          const mapSec = (s) => ({
+            code: s.code,
+            type: (s.activityOfferingType || "").toLowerCase(), // lecture | quiz | lab | studio
+            primary: !!s.primary,
+            linkTo: s.primaryActivityOfferingCode || null,       // quiz/lab → its lecture code
+            instructor: (s.instructor || "").trim(),
+            sln: s.registrationCode || null,
+            seats: { count: s.enrollCount, max: s.enrollMaximum, status: (s.enrollStatus || "").toLowerCase() },
+            meetings: (s.meetingDetailsList || []).map((m) => ({ days: m.days || "", time: m.time || "", building: m.building || "", room: m.room || "" })),
+            meet: (s.meetingDetailsList || []).map((m) => `${m.days || ""} ${m.time || ""}${m.building ? " · " + m.building + " " + (m.room || "") : ""}`.trim()),
+          });
+          data.terms = termList.slice(0, 2).map((t) => ({
+            term: t.term || "",                 // e.g. "Autumn 2026"
+            qtr: t.qtryr || (t.activityOfferingItemList && t.activityOfferingItemList[0] && t.activityOfferingItemList[0].qtryr) || "",
+            sections: (t.activityOfferingItemList || []).map(mapSec),
+          }));
+          // Backward-compatible fields from the first (current) term.
+          const t0 = termList[0];
+          data.term = (t0 && t0.term) || "";
+          const lects0 = ((t0 && t0.activityOfferingItemList) || []).filter((s) => s.instructor && s.instructor.trim() && /lecture/i.test(s.activityOfferingType || ""));
+          data.sections = lects0.map(mapSec);
+          profNames = [...new Set(lects0.map((s) => s.instructor.trim()))];
         }
       } catch (e) { /* */ }
       // 3) RateMyProfessors — real ratings per instructor (UW schoolID)

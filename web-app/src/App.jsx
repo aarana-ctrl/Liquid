@@ -674,11 +674,12 @@ const FILTER_AREAS = [["", "All areas"], ["arts", "Arts & Humanities"], ["social
 function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen, removeChosen, onClose }) {
   const [tab, setTab] = useState("rec");
   const [q, setQ] = useState("");
-  const [credFilter, setCredFilter] = useState(0);
-  const [areaFilter, setAreaFilter] = useState("");
+  const [creds, setCreds] = useState([]);   // selected credit values (OR)
+  const [areas, setAreas] = useState([]);   // selected gen-ed areas (AND — course must cover all)
   useEffect(() => { const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const pool = useMemo(() => poolForArea(req.area), [req.area]);
+  const toggle = (arr, setArr, v) => setArr(arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
 
   const isCredits = req.kind === "credits";
   const doneCr = pool.filter((c) => completedSet.has(c.id)).reduce((s, c) => s + c.credits, 0);
@@ -690,56 +691,70 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
 
   const remainingMap = useMemo(() => computeRemaining(major, completedSet, ipSet, chosenSet), [major, completedSet, ipSet, chosenSet]);
   const recs = useMemo(() => recommend({ area: req.area, remainingMap, taken, planned: chosenSet, satisfied: taken }), [req.area, remainingMap, taken, chosenSet]);
-  const top = recs.slice(0, 8);
+  const top = recs.slice(0, 9);
   // "All courses" searches the whole catalog with filters (not just this area).
   const needle = q.trim().toLowerCase();
   const all = useMemo(() => Object.values(COURSES)
     .filter((c) => !taken.has(c.id))
     .filter((c) => !needle || c.id.toLowerCase().includes(needle.replace(/\s+/g, "")) || c.title.toLowerCase().includes(needle))
-    .filter((c) => !credFilter || c.credits === credFilter)
-    .filter((c) => !areaFilter || (c.gened || [c.category]).includes(areaFilter))
-    .sort((a, b) => a.id.localeCompare(b.id)), [needle, credFilter, areaFilter, taken]);
+    .filter((c) => !creds.length || creds.includes(c.credits))
+    .filter((c) => { if (!areas.length) return true; const g = c.gened || [c.category]; return areas.every((a) => g.includes(a)); })
+    .sort((a, b) => a.id.localeCompare(b.id)), [needle, creds, areas, taken]);
+  const hasFilters = areas.length || creds.length || q;
 
   return (
-    <div className="course-browser category-full">
-      <div className="cb-top">
-        <div>
-          <div className="ds-eyebrow">Add courses</div>
-          <h2>{req.label}</h2>
-          <p>{isCredits ? `Need ${need} cr · ${haveLabel} · ${remainingCredits} cr left` : `${haveLabel} · need ${need} courses`}{remainingCredits === 0 && isCredits ? " · already met (extra courses double-count / electives)" : ""}</p>
+    <div className="account-page picker-page">
+      <Sky />
+      <div className="ds-inner">
+        <div className="ds-topbar">
+          <div>
+            <div className="ds-eyebrow">Add courses</div>
+            <h2>{req.label}</h2>
+            <p>{isCredits ? `Need ${need} cr · ${haveLabel} · ${remainingCredits} cr left` : `${haveLabel} · need ${need} courses`}{remainingCredits === 0 && isCredits ? " · already met (extra courses double-count / electives)" : ""}</p>
+          </div>
+          <div className="ds-actions"><button className="page-close" onClick={onClose}>✕ Close</button><div className="ds-hint">or press Esc · browser back returns here</div></div>
         </div>
-        <button className="page-close" onClick={onClose}>✕ Close</button>
-      </div>
-      <div className="cat-bar">
-        <div className="cd-tabs">
+        <div className="ds-modes">
           <button className={tab === "rec" ? "active" : ""} onClick={() => setTab("rec")}>★ Recommended</button>
           <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>All courses</button>
         </div>
+
         {tab === "all" && (
-          <div className="cat-filters">
-            <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search courses…" />
-            <select className="set-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>{FILTER_AREAS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            <select className="set-select" value={credFilter} onChange={(e) => setCredFilter(+e.target.value)}><option value={0}>Any credits</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} cr</option>)}</select>
+          <div className="pick-filters island">
+            <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by code or title…" />
+            <div className="pf-groups">
+              <div className="pf-group">
+                <span className="pf-lbl">Area</span>
+                {FILTER_AREAS.slice(1).map(([v, l]) => <button key={v} className={`pf-chip ${areas.includes(v) ? "on" : ""}`} onClick={() => toggle(areas, setAreas, v)}>{l}</button>)}
+              </div>
+              <div className="pf-group">
+                <span className="pf-lbl">Credits</span>
+                {[1, 2, 3, 4, 5].map((n) => <button key={n} className={`pf-chip ${creds.includes(n) ? "on" : ""}`} onClick={() => toggle(creds, setCreds, n)}>{n}</button>)}
+              </div>
+              {hasFilters ? <button className="pf-clear" onClick={() => { setAreas([]); setCreds([]); setQ(""); }}>Clear all</button> : null}
+            </div>
           </div>
         )}
-      </div>
-      <div className="cb-scroll">
-        {tab === "rec" && (
-          <>
-            <p className="cd-note">Ranked by how much of what you <b>still need</b> each course covers — courses that only fill areas you've finished sink to the bottom.</p>
-            <div className="cat-grid">
-              {top.map((r) => <CourseRow key={r.id} id={r.id} reasons={r.reasons} chosen={chosenSet.has(r.id)} onAdd={() => addChosen(r.id)} onRemove={() => removeChosen(r.id)} />)}
-            </div>
-          </>
-        )}
-        {tab === "all" && (
-          <>
-            <p className="cd-note">{all.length} course{all.length === 1 ? "" : "s"} — filter by area and credits.</p>
-            <div className="cat-grid">
-              {all.slice(0, 300).map((c) => <CourseRow key={c.id} id={c.id} chosen={chosenSet.has(c.id)} onAdd={() => addChosen(c.id)} onRemove={() => removeChosen(c.id)} />)}
-            </div>
-          </>
-        )}
+
+        <div className="pick-scroll">
+          {tab === "rec" && (
+            <>
+              <p className="cd-note">Ranked by how much of what you <b>still need</b> each course covers — courses that only fill areas you've finished sink to the bottom.</p>
+              <div className="pick-grid">
+                {top.map((r) => <CourseRow key={r.id} id={r.id} reasons={r.reasons} chosen={chosenSet.has(r.id)} onAdd={() => addChosen(r.id)} onRemove={() => removeChosen(r.id)} />)}
+              </div>
+            </>
+          )}
+          {tab === "all" && (
+            <>
+              <p className="cd-note">{all.length.toLocaleString()} course{all.length === 1 ? "" : "s"}{areas.length ? ` covering ${areas.map((a) => (SHORT_AREA[a] || a)).join(" + ")}` : ""}{creds.length ? ` · ${creds.sort().join("/")} cr` : ""}.</p>
+              <div className="pick-grid">
+                {all.slice(0, 300).map((c) => <CourseRow key={c.id} id={c.id} chosen={chosenSet.has(c.id)} onAdd={() => addChosen(c.id)} onRemove={() => removeChosen(c.id)} />)}
+              </div>
+              {all.length > 300 && <p className="cd-note" style={{ textAlign: "center", marginTop: 16 }}>Showing the first 300 — narrow with search or filters to see the rest.</p>}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -992,16 +1007,88 @@ function offeredLabel(code) {
   return out.length ? out.join(" · ") : "";
 }
 
+// ---- Meeting-time parsing + clash detection (for planning a quarter) --------
+// Parse a UW days string ("MWThF") into weekday indices, then meeting times into
+// weekly intervals so we can tell whether two sections overlap.
+function parseDays(s) {
+  const str = String(s || ""); const out = []; let i = 0;
+  while (i < str.length) {
+    if (str.startsWith("Th", i)) { out.push(4); i += 2; }
+    else if (str.startsWith("Su", i)) { out.push(0); i += 2; }
+    else if (str.startsWith("Sa", i)) { out.push(6); i += 2; }
+    else if (str[i] === "M") { out.push(1); i++; }
+    else if (str[i] === "T") { out.push(2); i++; }
+    else if (str[i] === "W") { out.push(3); i++; }
+    else if (str[i] === "F") { out.push(5); i++; }
+    else i++;
+  }
+  return out;
+}
+function parseClock(t) { // "12:30 PM" → minutes since midnight
+  const m = String(t || "").match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+  if (!m) return null;
+  let h = +m[1]; const ap = (m[3] || "").toUpperCase();
+  if (ap === "PM" && h !== 12) h += 12; if (ap === "AM" && h === 12) h = 0;
+  return h * 60 + (+m[2]);
+}
+function meetingIntervals(meetings) { // [{days,time}] → [{day,start,end}]
+  const iv = [];
+  for (const m of meetings || []) {
+    const [a, b] = String(m.time || "").split(/[–-]/);
+    const start = parseClock(a), end = parseClock(b);
+    if (start == null || end == null) continue;
+    for (const day of parseDays(m.days)) iv.push({ day, start, end });
+  }
+  return iv;
+}
+function intervalsClash(a, b) {
+  for (const x of a || []) for (const y of b || []) if (x.day === y.day && x.start < y.end && y.start < x.end) return true;
+  return false;
+}
+// Opportunistic cache of each course's primary-lecture intervals per term, so as
+// the student browses candidate courses we can warn when two would meet at the
+// same time in the quarter they're planning.
+const SECTION_CACHE = {}; // { [term]: { [courseId]: { intervals, label } } }
+function cacheLecture(term, courseId, intervals, label) {
+  if (!term || !intervals?.length) return;
+  (SECTION_CACHE[term] = SECTION_CACHE[term] || {})[courseId] = { intervals, label };
+}
+function findClashes(term, courseId, intervals) {
+  const bucket = SECTION_CACHE[term] || {}; const hits = [];
+  for (const [cid, v] of Object.entries(bucket)) {
+    if (cid === courseId) continue;
+    if (intervalsClash(intervals, v.intervals)) hits.push(v.label || cid);
+  }
+  return hits;
+}
+function seatClass(s) {
+  if (!s || s.max == null || s.max === "") return "seat-unknown";
+  const count = +s.count || 0, max = +s.max || 0;
+  if ((s.status || "") === "closed" || count >= max) return "seat-closed";
+  const left = max - count;
+  return left <= Math.max(2, max * 0.1) ? "seat-low" : "seat-open";
+}
+function seatText(s) {
+  if (!s || s.max == null || s.max === "") return "seats —";
+  const count = +s.count || 0, max = +s.max || 0;
+  const left = Math.max(0, max - count);
+  if ((s.status || "") === "closed" || left === 0) return `full ${count}/${max}`;
+  return `${left} left · ${count}/${max}`;
+}
+
 // ---- Course Details: DawgPath grade distribution + info, in glass theme ------
 function CourseDetailsPage({ courseId, onClose }) {
   const [data, setData] = useState(undefined); // undefined = loading, null = unavailable
   const [selBar, setSelBar] = useState(null);   // clicked grade bar → { gpa, count, pct }
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    let live = true; fetchCourseDetails(courseId).then((d) => { if (live) setData(d); });
+    let live = true; fetchCourseDetails(courseId).then((d) => { if (live) { setData(d); setRefreshing(false); } });
     return () => { live = false; window.removeEventListener("keydown", onKey); };
-  }, [courseId, onClose]);
+  }, [courseId, onClose, refreshKey]);
+  const refreshSeats = () => { setRefreshing(true); setRefreshKey((k) => k + 1); };
   const local = COURSES[courseId.replace(/\s+/g, "")];
   const fmtId = courseId.replace(/([A-Z])(\d)/, "$1 $2");
   const subj = fmtId.split(/\s+/)[0];
@@ -1105,6 +1192,50 @@ function CourseDetailsPage({ courseId, onClose }) {
                 ) : <p className="cd-desc">No grade data recorded for this course.</p>}
               </section>
             </div>
+
+            {data.terms && data.terms.length > 0 && (
+              <section className="island cd-panel cd-sections">
+                <div className="cd-sec-head">
+                  <h3 className="set-h" style={{ margin: 0 }}>Sections &amp; seats — plan your quarter</h3>
+                  <button className="cd-refresh" onClick={refreshSeats} disabled={refreshing}>{refreshing ? "Refreshing…" : "↻ Refresh seats"}</button>
+                </div>
+                <p className="cd-desc" style={{ marginTop: 6 }}>Live meeting times and open seats from MyPlan for the quarters you can register for. A section is flagged if it clashes with another course you've opened for the same quarter — so you don't plan two classes at the same time.</p>
+                {data.terms.map((t) => {
+                  const lects = (t.sections || []).filter((s) => s.primary || s.type === "lecture");
+                  const others = (t.sections || []).filter((s) => !(s.primary || s.type === "lecture"));
+                  const allIv = lects.flatMap((l) => meetingIntervals(l.meetings));
+                  cacheLecture(t.term, courseId, allIv, fmtId);
+                  const clashes = findClashes(t.term, courseId, allIv);
+                  return (
+                    <div key={t.term} className="cd-term">
+                      <div className="cd-term-h"><b>{t.term || "Upcoming quarter"}</b>{clashes.length ? <span className="cd-clash">⚠ Time clash with {clashes.join(", ")}</span> : null}</div>
+                      {lects.length === 0 && <p className="cd-desc" style={{ margin: "4px 0" }}>No sections listed for {t.term || "this quarter"} yet.</p>}
+                      {lects.map((l) => {
+                        const quizzes = others.filter((o) => o.linkTo === l.code);
+                        return (
+                          <div key={l.code} className="cd-lect">
+                            <div className="cd-sec-row">
+                              <span className="cd-sec-code">{l.code}</span>
+                              <span className="cd-sec-meet">{l.meet.filter(Boolean).join(" · ") || "Time TBA"}</span>
+                              {l.instructor && <span className="cd-sec-inst">{l.instructor}</span>}
+                              <span className={`cd-seat ${seatClass(l.seats)}`}>{seatText(l.seats)}</span>
+                            </div>
+                            {quizzes.map((qz) => (
+                              <div key={qz.code} className="cd-sec-row quiz">
+                                <span className="cd-sec-code">{qz.code}</span>
+                                <span className="cd-sec-meet">{qz.meet.filter(Boolean).join(" · ") || "—"}</span>
+                                <span className={`cd-seat ${seatClass(qz.seats)}`}>{seatText(qz.seats)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </section>
+            )}
+
             <div className="cd-links cd-bottom">
               <a className="cd-link myplan" href={myplan} target="_blank" rel="noreferrer">Open in MyPlan ↗</a>
               <a className="cd-link" href={dawg} target="_blank" rel="noreferrer">View on DawgPath ↗</a>
@@ -1950,7 +2081,7 @@ export default function App() {
         </div>
       )}
       <div className="dock-hotzone" aria-hidden />
-      <div className={`dock island ${showDesign || showAccount || showDetail || courseDetailId ? "tucked" : ""}`}>
+      <div className={`dock island ${showDesign || showAccount || showDetail || courseDetailId || detailReq ? "tucked" : ""}`}>
         <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setCourseDetailId(null); setView("plan"); }} title="Home">{I.home}</button>
         <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setCourseDetailId(null); setView("catalog"); }} title="Catalog">{I.search}</button>
         <button className={showDesign ? "active" : ""} onClick={() => { setShowAccount(false); setShowDetail(false); openDesign("plan"); }} title="Design Studio">{I.pen}</button>
