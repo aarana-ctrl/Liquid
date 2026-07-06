@@ -20,4 +20,7 @@
       chrome.runtime.sendMessage({ type: "lp-run-queue-bg" });
     }
   });
+  // Robustness backstop: independently poll the backend queue every 12s while the
+  // app is open, so audits still run even if the page message never fires.
+  setInterval(() => { try { chrome.runtime.sendMessage({ type: "lp-check-queue" }); } catch (e) { /* */ } }, 12000);
 })();

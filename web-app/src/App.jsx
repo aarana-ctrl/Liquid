@@ -496,7 +496,7 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
           </div>
           <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
         </div>
-        <div className="set-scroll" style={{ maxWidth: 940 }}>
+        <div className="set-scroll detail-scroll">
           <section className="island set-card">
             <div className="da-progress"><b>{pct}%</b> toward your degree · <span>{total - earnedCr} cr remaining</span></div>
             <div className="bar" style={{ height: 9 }}><div style={{ width: `${Math.min(100, pct)}%` }} /></div>
@@ -505,38 +505,44 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
           <section className="island set-card">
             <h3 className="set-h">Requirements <span className="set-val">{reqs.length}</span></h3>
             {reqs.length === 0 && <div className="rb-empty">Run a DARS sync to load your full requirement breakdown.</div>}
-            {reqs.map((r, i) => {
-              const isCourses = r.needsCourses != null && r.needsCr == null;
-              const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
-              const met = remaining <= 0;
-              return (
-                <div key={i} className={`da-req ${met ? "met" : ""}`}>
-                  <span className={`da-status ${met ? "ok" : "no"}`}>{met ? "✓" : "○"}</span>
-                  <span className="da-label">{r.label}</span>
-                  <b className="da-need">{met ? "met" : `${remaining} ${isCourses ? "course" + (remaining > 1 ? "s" : "") : "cr"} left`}</b>
-                </div>
-              );
-            })}
+            <div className="da-reqs">
+              {reqs.map((r, i) => {
+                const isCourses = r.needsCourses != null && r.needsCr == null;
+                const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
+                const met = remaining <= 0;
+                return (
+                  <div key={i} className={`da-req ${met ? "met" : ""}`}>
+                    <span className={`da-status ${met ? "ok" : "no"}`}>{met ? "✓" : "○"}</span>
+                    <span className="da-label">{r.label}</span>
+                    <b className="da-need">{met ? "met" : `${remaining} ${isCourses ? "course" + (remaining > 1 ? "s" : "") : "cr"} left`}</b>
+                  </div>
+                );
+              })}
+            </div>
           </section>
 
           <section className="island set-card">
             <h3 className="set-h">Courses completed <span className="set-val">{earned.length}</span></h3>
-            {termKeys.map((t) => (
-              <div key={t} className="da-term">
-                <div className="da-term-h">{termLabel(t)} <span>{byTerm[t].length}</span></div>
-                {byTerm[t].map((id) => (
-                  <div key={id} className="da-course"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
-                ))}
-              </div>
-            ))}
+            <div className="da-terms">
+              {termKeys.map((t) => (
+                <div key={t} className="da-term island">
+                  <div className="da-term-h">{termLabel(t)} <span>{byTerm[t].length}</span></div>
+                  {byTerm[t].map((id) => (
+                    <div key={id} className="da-course"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
           </section>
 
           {ipList.length > 0 && (
             <section className="island set-card">
               <h3 className="set-h">In progress <span className="set-val">{ipList.length}</span></h3>
-              {ipList.map((id) => (
-                <div key={id} className="da-course"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
-              ))}
+              <div className="da-terms">
+                {ipList.map((id) => (
+                  <div key={id} className="da-course island"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
+                ))}
+              </div>
             </section>
           )}
         </div>
@@ -1435,6 +1441,35 @@ export default function App() {
     setInProgress((p) => [...new Set([...p, ...(snap.inProgress || [])])]);
     if (snap.terms) setCourseTerms((t) => ({ ...t, ...snap.terms }));
   }
+  // Authoritative replace — used after a DARS refresh so DROPPED courses actually
+  // disappear (the union in applySnapshot would keep them).
+  function replaceFromSnapshot(snap) {
+    setSnapshot(snap);
+    if (Array.isArray(snap.earned)) setCompleted(snap.earned);
+    if (Array.isArray(snap.inProgress)) setInProgress(snap.inProgress);
+    if (snap.terms) setCourseTerms(snap.terms);
+  }
+  // Poll the backend snapshot after an auto-run so the app picks up the fresh
+  // audit automatically — badges flip estimate→exact, data updates — no reload.
+  const auditPollRef = useRef(null);
+  function startAuditPolling() {
+    if (!token) return;
+    const startAt = Date.now();
+    const prevFetched = snapshot?.fetchedAt;
+    if (auditPollRef.current) clearInterval(auditPollRef.current);
+    auditPollRef.current = setInterval(async () => {
+      if (Date.now() - startAt > 150000) { clearInterval(auditPollRef.current); return; }
+      try {
+        const snap = await getSnapshot(token);
+        if (snap && snap.fetchedAt && snap.fetchedAt !== prevFetched) {
+          replaceFromSnapshot(snap);
+          clearInterval(auditPollRef.current);
+          setAuditToast("✓ DARS refresh complete — your numbers are now exact.");
+          setTimeout(() => setAuditToast(""), 7000);
+        }
+      } catch { /* keep polling */ }
+    }, 6000);
+  }
   async function handleSyncLocal() {
     setSyncing(true);
     const snap = await fetchMyPlanSnapshot();
@@ -1479,6 +1514,7 @@ export default function App() {
     // force:true so it re-runs even though we already have this program's audit
     for (const b of items) { try { await enqueueAudit(token, { name: b.name, level: b.level, force: true }); } catch { /* */ } }
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
+    startAuditPolling();
     setAuditToast("Refreshing from MyPlan in the background — a tab opens quietly and closes itself when done.");
     setTimeout(() => setAuditToast(""), 9000);
   };
@@ -1496,6 +1532,7 @@ export default function App() {
     // The extension runs the whole batch in ONE hidden background tab that
     // closes itself when done — no tabs to manage.
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
+    startAuditPolling();
     setAuditToast(ok
       ? `Running DARS for ${ok} program${ok > 1 ? "s" : ""} in the background — a MyPlan tab opens quietly and closes itself when done. Exact numbers appear here automatically.`
       : "Couldn't reach the audit queue. Make sure you're signed in and the backend is up.");

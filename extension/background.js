@@ -61,11 +61,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // done. Reuses an already-open MyPlan tab if there is one (and never closes
   // the user's own tab). Only ever one background tab, no matter how many times
   // this is called — so 10 programs never means 10 tabs.
-  if (msg?.type === "lp-run-queue-bg") {
+  // lp-run-queue-bg (from the app) and lp-check-queue (extension's own poll) both
+  // land here: if there's anything queued, run it in ONE hidden tab that closes
+  // itself. Checks the queue FIRST so it never opens a tab for nothing.
+  if (msg?.type === "lp-run-queue-bg" || msg?.type === "lp-check-queue") {
     (async () => {
       const s = await readStore();
       if (!s.token || !baseUrl(s)) { sendResponse({ ok: false, error: "not-connected" }); return; }
       try {
+        const qr = await fetch(baseUrl(s) + "/api/audit-queue", { headers: { Authorization: "Bearer " + s.token } });
+        const qj = await qr.json().catch(() => ({}));
+        if (!qj.queue || !qj.queue.length) { sendResponse({ ok: true, empty: true }); return; }
         // A MyPlan tab the user already has open? Use it; don't open/close a tab.
         const existing = await chrome.tabs.query({ url: "https://myplan.uw.edu/audit*" });
         if (existing && existing.length) {

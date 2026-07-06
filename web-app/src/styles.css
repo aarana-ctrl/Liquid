@@ -464,8 +464,12 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .set-signout { border: 1px solid var(--glass-brd); background: var(--glass-2); color: var(--text); border-radius: 12px; padding: 11px 18px; font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .set-signout:hover { background: rgba(255,120,120,0.14); border-color: rgba(255,120,120,0.4); }
 
-/* Detailed DARS audit page */
+/* Detailed DARS audit page — fills the whole page, multi-column */
+.detail-scroll { max-width: none; }
 .da-progress { font-size: 14px; margin-bottom: 12px; } .da-progress b { font-size: 22px; font-weight: 800; } .da-progress span { color: var(--text-dim); }
+.da-reqs { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 6px 22px; }
+.da-terms { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
+.da-term.island { padding: 14px 16px; }
 .da-req { display: flex; align-items: center; gap: 12px; padding: 11px 4px; border-bottom: 1px solid var(--glass-brd); }
 .da-req:last-child { border-bottom: none; }
 .da-status { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
