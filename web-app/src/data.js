@@ -151,6 +151,20 @@ export const COURSES = {
   GWSS250: { id: "GWSS250", title: "Intro to Queer Studies", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
   AIS102:  { id: "AIS102",  title: "Introduction to American Indian Studies", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social"] },
   CHID250: { id: "CHID250", title: "Special Topics in Diversity", credits: 5, category: "diversity", prereqs: [], gened: ["diversity"] },
+
+  // More Writing (W) courses across departments (UW has hundreds; this is a broad set).
+  HSTAM101:{ id: "HSTAM101", title: "The Ancient World (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"] },
+  PHIL160: { id: "PHIL160", title: "Introduction to Ethics (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"] },
+  ENGL207: { id: "ENGL207", title: "Introduction to Cultural Studies (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"] },
+  ENGL202: { id: "ENGL202", title: "Introduction to English Language & Literature (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"] },
+  POLS201: { id: "POLS201", title: "Introduction to Political Theory (W)", credits: 5, category: "social", prereqs: [], gened: ["social", "writing"] },
+  SOC300:  { id: "SOC300",  title: "Writing in Sociology (W)", credits: 5, category: "social", prereqs: [], gened: ["social", "writing"] },
+  GWSS300: { id: "GWSS300", title: "Gender & Writing (W)", credits: 5, category: "diversity", prereqs: [], gened: ["diversity", "social", "writing"] },
+  BIOL240: { id: "BIOL240", title: "Writing in Biology (W)", credits: 3, category: "science", prereqs: [], gened: ["science", "writing"] },
+  CHEM299: { id: "CHEM299", title: "Undergraduate Research Writing (W)", credits: 3, category: "science", prereqs: [], gened: ["science", "writing"] },
+  ARCH150: { id: "ARCH150", title: "Appreciation of Architecture (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing"] },
+  JSIS201: { id: "JSIS201", title: "The Making of the 21st Century (W)", credits: 5, category: "social", prereqs: [], gened: ["social", "writing"] },
+  CHID270: { id: "CHID270", title: "Special Topics in the Humanities (W)", credits: 5, category: "arts", prereqs: [], gened: ["arts", "writing", "diversity"] },
 };
 
 // Tag natural-science courses with a gened area for the recommender.

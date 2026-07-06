@@ -106,6 +106,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
 
+  // Fetch a course's DawgPath details (grade distribution, description, offerings)
+  // using the user's UW session. Public data, but requires the UW cookie.
+  if (msg?.type === "lp-course-details") {
+    (async () => {
+      try {
+        const id = encodeURIComponent(String(msg.courseId || "").replace(/([A-Z])(\d)/, "$1 $2"));
+        const r = await fetch("https://dawgpath.uw.edu/api/v1/courses/details/" + id, { credentials: "include" });
+        if (!r.ok) return sendResponse({ ok: false, status: r.status });
+        const d = await r.json();
+        sendResponse({ ok: true, data: {
+          courseId: d.course_id, title: d.course_title, credits: d.course_credits,
+          description: d.course_description, offered: d.course_offered, prereq: d.prereq_string,
+          gpaDistro: d.gpa_distro || [], concurrent: d.concurrent_courses || [], coi: d.coi_data || null,
+        } });
+      } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
+    })();
+    return true;
+  }
+
   if (msg?.type === "lp-catalog") {
     (async () => {
       const s = await readStore();

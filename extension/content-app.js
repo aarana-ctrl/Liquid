@@ -16,8 +16,16 @@
 
   // The app asks us to run queued DARS audits in the background (no popup window).
   window.addEventListener("message", (e) => {
-    if (e.source === window && e.data && e.data.source === "liquid" && e.data.type === "lp-run-queue") {
+    if (e.source !== window || !e.data || e.data.source !== "liquid") return;
+    if (e.data.type === "lp-run-queue") {
       chrome.runtime.sendMessage({ type: "lp-run-queue-bg" });
+    }
+    // Course Details request → fetch from DawgPath and post the result back.
+    if (e.data.type === "lp-course-req") {
+      const reqId = e.data.reqId;
+      chrome.runtime.sendMessage({ type: "lp-course-details", courseId: e.data.courseId }, (resp) => {
+        window.postMessage({ source: "liquid-ext", type: "lp-course-res", reqId, resp: resp || { ok: false } }, "*");
+      });
     }
   });
   // Robustness backstop: independently poll the backend queue every 12s while the

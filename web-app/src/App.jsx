@@ -424,7 +424,7 @@ function CourseBrowser({ program, planIds, completedSet, ipSet, chosenSet, addCh
                         <div className="cb-ttl">{c.title}</div>
                         {item.reasons?.[0] && <div className="cb-reason">{item.reasons[0]}</div>}
                         {targetAbs != null && <div className={`qp-status ${ok ? "ok" : "no"}`}>{ok ? "✓ Prereqs met for this quarter" : `Needs ${miss.map(fmt).join(", ")} earlier`}</div>}
-                        {openDesc === id && <div className="cb-desc">{getDesc(id)}</div>}
+                        {openDesc === id && <div className="cb-desc">{getDesc(id)}<button className="course-details-btn" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("lp-open-course", { detail: fmt(id) })); }}>◧ Course details — grades &amp; professors →</button></div>}
                       </div>
                       <button className={`cb-add ${on ? "on" : ""}`} disabled={!ok} onClick={() => addCourse(id)}>{on ? "✓" : ok ? "＋" : "🔒"}</button>
                     </div>
@@ -943,6 +943,115 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
 }
 
 // ---- account modal ---------------------------------------------------------
+// Ask the extension to fetch a course's DawgPath details (grade distribution +
+// info). Resolves null if the extension isn't available or the course isn't found.
+function fetchCourseDetails(courseId) {
+  return new Promise((resolve) => {
+    const reqId = Math.random().toString(36).slice(2);
+    const timer = setTimeout(() => { window.removeEventListener("message", onMsg); resolve(null); }, 12000);
+    function onMsg(e) {
+      if (e.source === window && e.data && e.data.source === "liquid-ext" && e.data.type === "lp-course-res" && e.data.reqId === reqId) {
+        clearTimeout(timer); window.removeEventListener("message", onMsg);
+        resolve(e.data.resp && e.data.resp.ok ? e.data.resp.data : null);
+      }
+    }
+    window.addEventListener("message", onMsg);
+    try { window.postMessage({ source: "liquid", type: "lp-course-req", reqId, courseId }, "*"); } catch { resolve(null); }
+  });
+}
+const QMAP = [["Sp", "Spring"], ["A", "Autumn"], ["W", "Winter"], ["S", "Summer"]];
+function offeredLabel(code) {
+  if (!code) return "";
+  let s = code, out = [];
+  for (const [k, name] of QMAP) { if (s.includes(k)) { out.push(name); s = s.split(k).join(""); } }
+  return out.length ? out.join(" · ") : "";
+}
+
+// ---- Course Details: DawgPath grade distribution + info, in glass theme ------
+function CourseDetailsPage({ courseId, onClose }) {
+  const [data, setData] = useState(undefined); // undefined = loading, null = unavailable
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    let live = true; fetchCourseDetails(courseId).then((d) => { if (live) setData(d); });
+    return () => { live = false; window.removeEventListener("keydown", onKey); };
+  }, [courseId, onClose]);
+  const local = COURSES[courseId.replace(/\s+/g, "")];
+  const fmtId = courseId.replace(/([A-Z])(\d)/, "$1 $2");
+  const subj = fmtId.split(/\s+/)[0];
+  const title = data?.title || local?.title || fmtId;
+  const distro = (data?.gpaDistro || []).filter((g) => g && g.gpa != null);
+  const totalN = distro.reduce((s, g) => s + (g.count || 0), 0);
+  const graded = distro.filter((g) => +g.gpa > 0);
+  const avg = graded.reduce((s, g) => s + (+g.gpa) * (g.count || 0), 0) / (graded.reduce((s, g) => s + (g.count || 0), 0) || 1);
+  const maxC = Math.max(1, ...distro.map((g) => g.count || 0));
+  const rmp = `https://www.ratemyprofessors.com/search/professors/1530?q=`; // UW school id on RMP
+  const myplan = `https://myplan.uw.edu/course/#/courses/${courseId.replace(/\s+/g, "")}`;
+  const dawg = `https://dawgpath.uw.edu/course?id=${encodeURIComponent(fmtId)}&campus=seattle`;
+  return (
+    <div className="account-page course-detail">
+      <Sky />
+      <div className="ds-inner">
+        <div className="ds-topbar">
+          <div>
+            <div className="ds-eyebrow">Course · DawgPath</div>
+            <h2>{fmtId}{title && title !== fmtId ? ` — ${title}` : ""}</h2>
+            <p>{(data?.credits || local?.credits) ? `${data?.credits || local?.credits} credits` : ""}{data?.offered ? ` · Offered ${offeredLabel(data.offered)}` : ""}</p>
+          </div>
+          <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
+        </div>
+
+        {data === undefined && <div className="cd-loading island"><span className="ap-spin" /> Loading course info from DawgPath…</div>}
+        {data === null && (
+          <div className="island set-card" style={{ maxWidth: 640 }}>
+            <h3 className="set-h">Course information isn't available</h3>
+            <p className="set-note">DawgPath couldn't return data for this course (it needs your UW sign-in, and the extension must be active). You can check it directly:</p>
+            <div className="cd-links"><a className="cd-link" href={dawg} target="_blank" rel="noreferrer">Open on DawgPath ↗</a><a className="cd-link" href={myplan} target="_blank" rel="noreferrer">Open on MyPlan ↗</a></div>
+          </div>
+        )}
+
+        {data && (
+          <div className="cd-scroll">
+            <div className="cd-cols">
+              <section className="island cd-panel">
+                <h3 className="set-h">Course info</h3>
+                {data.description && <p className="cd-desc">{data.description}</p>}
+                <div className="cd-facts">
+                  {data.credits && <div><span>Credits</span><b>{data.credits}</b></div>}
+                  {data.offered && <div><span>Offered</span><b>{offeredLabel(data.offered)}</b></div>}
+                  {data.prereq && <div><span>Prereqs</span><b>{data.prereq}</b></div>}
+                </div>
+                <h3 className="set-h" style={{ marginTop: 20 }}>Professor &amp; ratings</h3>
+                <p className="cd-desc">Instructors vary by section and quarter — pick a section on MyPlan for the exact professor, then check their rating.</p>
+                <a className="cd-rmp" href={rmp + encodeURIComponent(subj)} target="_blank" rel="noreferrer">★ Search {subj} professors on RateMyProfessors ↗</a>
+              </section>
+
+              <section className="island cd-panel">
+                <h3 className="set-h">Grade distribution</h3>
+                <p className="cd-stat"><b>{avg ? avg.toFixed(2) : "—"}</b> average GPA · {totalN.toLocaleString()} grades</p>
+                {distro.length ? (
+                  <div className="gd-wrap">
+                    <div className="gd-chart">
+                      {distro.map((g, i) => (
+                        <div key={i} className="gd-bar" style={{ height: `${((g.count || 0) / maxC) * 100}%` }} title={`${g.gpa} GPA · ${g.count}`} />
+                      ))}
+                    </div>
+                    <div className="gd-axis"><span>0.0</span><span>1.0</span><span>2.0</span><span>3.0</span><span>4.0</span></div>
+                  </div>
+                ) : <p className="cd-desc">No grade data recorded for this course.</p>}
+              </section>
+            </div>
+            <div className="cd-links cd-bottom">
+              <a className="cd-link myplan" href={myplan} target="_blank" rel="noreferrer">Open in MyPlan ↗</a>
+              <a className="cd-link" href={dawg} target="_blank" rel="noreferrer">View on DawgPath ↗</a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const THEMES = [
   { id: "aurora", name: "Aurora", accent: "#8b7bf0", accent2: "#6aa8ff" },
   { id: "ocean", name: "Ocean", accent: "#4aa8ff", accent2: "#41e0c8" },
@@ -1128,7 +1237,7 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
                               <div className="ds-rec-main" onClick={() => setOpenDesc(openDesc === rc.id ? null : rc.id)}>
                                 <div className="ds-rec-code"><b>{rc.id.replace(/([A-Z])(\d)/, "$1 $2")}</b><span>{c.credits} cr</span></div>
                                 <div className="ds-rec-ttl">{c.title}</div>
-                                {openDesc === rc.id && <div className="ds-rec-desc">{getDesc(rc.id)}</div>}
+                                {openDesc === rc.id && <div className="ds-rec-desc">{getDesc(rc.id)}<button className="course-details-btn" onClick={(e) => { e.stopPropagation(); window.dispatchEvent(new CustomEvent("lp-open-course", { detail: rc.id.replace(/([A-Z])(\d)/, "$1 $2") })); }}>◧ Course details →</button></div>}
                               </div>
                               <button className={`ds-add ${on ? "on" : ""}`} onClick={() => on ? removeChosen(rc.id) : addChosen(rc.id)}>{on ? "✓" : "＋"}</button>
                             </div>
@@ -1374,6 +1483,12 @@ export default function App() {
   const [showDetail, setShowDetail] = useState(false);
   const [detailSource, setDetailSource] = useState(null); // a program audit entry, or null = current snapshot
   const openDetail = (src) => { setDetailSource(src || null); setShowDesign(false); setShowAccount(false); setShowDetail(true); };
+  const [courseDetailId, setCourseDetailId] = useState(null); // course id for the DawgPath details page
+  useEffect(() => {
+    const h = (e) => setCourseDetailId(e.detail);
+    window.addEventListener("lp-open-course", h);
+    return () => window.removeEventListener("lp-open-course", h);
+  }, []);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
@@ -1660,9 +1775,9 @@ export default function App() {
         </div>
       )}
       <div className="dock-hotzone" aria-hidden />
-      <div className={`dock island ${showDesign || showAccount || showDetail ? "tucked" : ""}`}>
-        <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setView("plan"); }} title="Home">{I.home}</button>
-        <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setView("catalog"); }} title="Catalog">{I.search}</button>
+      <div className={`dock island ${showDesign || showAccount || showDetail || courseDetailId ? "tucked" : ""}`}>
+        <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setCourseDetailId(null); setView("plan"); }} title="Home">{I.home}</button>
+        <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setCourseDetailId(null); setView("catalog"); }} title="Catalog">{I.search}</button>
         <button className={showDesign ? "active" : ""} onClick={() => { setShowAccount(false); setShowDetail(false); openDesign("plan"); }} title="Design Studio">{I.pen}</button>
         <div className="sep" />
         <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowDetail(false); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
@@ -1730,6 +1845,9 @@ export default function App() {
           bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit} runAuditNow={runAuditNow}
           onOpenDetail={openDetail}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
+      )}
+      {courseDetailId && (
+        <CourseDetailsPage courseId={courseDetailId} onClose={() => setCourseDetailId(null)} />
       )}
       {showDetail && (
         <DetailedAuditPage snapshot={detailSource || snapshot} program={program} completedSet={completedSet} ipSet={ipSet}
