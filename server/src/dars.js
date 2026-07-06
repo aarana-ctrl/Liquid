@@ -62,11 +62,26 @@ export function parseRequirements(text) {
   const CREDIT = /(Earned:|In-progress:|Needs:)/;
   const num = (re, s) => { const mm = s.match(re); return mm ? +mm[1] : null; };
 
+  const CODE = /\b([A-Z]{1,4})\s?(\d{3})\b/g;                  // candidate course codes, e.g. "CSE 123"
+  const COURSELIST = /^(select from|choose from|from the following|the following courses|courses:)/i;
+  // A line that is basically just a list of course codes (not a requirement sentence).
+  const isMostlyCodes = (line) => {
+    const codes = line.match(/\b[A-Z]{1,4}\s?\d{3}\b/g) || [];
+    if (codes.length < 2) return false;
+    const rest = line.replace(/\b[A-Z]{1,4}\s?\d{3}\b/g, "").replace(/[,;&/]|\bor\b|\band\b|\s/gi, "");
+    return rest.length <= 4;
+  };
+
   const reqs = [];
-  let label = null, cur = null;
+  let label = null, cur = null, curLines = [];
   const flush = () => {
-    if (cur && (cur.needsCr != null || cur.needsCourses != null || cur.earnedCr != null)) reqs.push(cur);
-    cur = null;
+    if (cur && (cur.needsCr != null || cur.needsCourses != null || cur.earnedCr != null)) {
+      const codes = [];
+      for (const ln of curLines) { let m; CODE.lastIndex = 0; while ((m = CODE.exec(ln)) !== null) { const id = m[1] + m[2]; if (!/^(AU|WI|SP|SU)\d/.test(m[1] + m[2]) && !codes.includes(id)) codes.push(id); } }
+      cur.selectCourses = codes.slice(0, 16); // courses that can satisfy this requirement
+      reqs.push(cur);
+    }
+    cur = null; curLines = [];
   };
   for (const line of lines) {
     if (CREDIT.test(line)) {
@@ -75,13 +90,19 @@ export function parseRequirements(text) {
       const ip = num(/In-progress:\s*(\d+)\s*credits/i, line); if (ip != null) cur.ipCr = ip;
       const nc = num(/Needs:\s*(\d+)\s*credits/i, line); if (nc != null) cur.needsCr = nc;
       const no = num(/Needs:\s*(\d+)\s*course/i, line); if (no != null) cur.needsCourses = no;
-      continue;
+      curLines.push(line); continue;
     }
-    if (STATUS.test(line) || COURSE_ROW.test(line) || /^[\d.]+$/.test(line)) continue;
-    if (/[A-Za-z]/.test(line) && line.length > 3) { flush(); label = line.replace(/\s+/g, " ").trim(); cur = null; }
+    if (STATUS.test(line) || COURSE_ROW.test(line) || /^[\d.]+$/.test(line)) { curLines.push(line); continue; }
+    if (/[A-Za-z]/.test(line) && line.length > 3) {
+      // A "select from / one of X, Y" course list belongs to the CURRENT requirement,
+      // not a new one — keep it in the block so we can list the courses.
+      if (cur && (COURSELIST.test(line) || isMostlyCodes(line))) {
+        curLines.push(line); continue;
+      }
+      flush(); label = line.replace(/\s+/g, " ").trim(); cur = null; curLines = [line];
+    }
   }
   flush();
-  // de-dupe identical labels, keep the one with the most info
   const byLabel = {};
   for (const r of reqs) {
     const k = r.label.toLowerCase();

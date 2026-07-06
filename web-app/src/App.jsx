@@ -462,6 +462,8 @@ function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing, 
 }
 
 // ---- Detailed DARS audit — full breakdown in the glass theme ----------------
+// Top-level/degree-wide lines that aren't actionable "unmet requirements".
+const SKIP_UNMET = /University requires|minimum of \d+ academic|matriculated University|in residence|Minimum (cumulative|graded) GPA|Total credits/i;
 function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms, onClose }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -520,6 +522,35 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
               })}
             </div>
           </section>
+
+          {(() => {
+            const unmet = reqs.filter((r) => (r.needsCourses != null && r.needsCr == null ? r.needsCourses : (r.needsCr || 0)) > 0 && !SKIP_UNMET.test(r.label));
+            if (!unmet.length) return <section className="island set-card"><h3 className="set-h">Unmet requirements</h3><div className="cmp-cat done">🎉 Everything's satisfied — nice work.</div></section>;
+            return (
+              <section className="island set-card">
+                <h3 className="set-h">Unmet requirements <span className="set-val">{unmet.length}</span></h3>
+                <p className="set-note" style={{ margin: "0 0 14px" }}>What's left, and the courses that can satisfy each.</p>
+                <div className="da-unmet-grid">
+                  {unmet.map((r, i) => {
+                    const isCourses = r.needsCourses != null && r.needsCr == null;
+                    const remaining = isCourses ? r.needsCourses : (r.needsCr || 0);
+                    const codes = (r.selectCourses || []).filter((id) => !completedSet.has(id) && !ipSet.has(id)).slice(0, 8);
+                    return (
+                      <div key={i} className="da-unmet island">
+                        <div className="da-unmet-head"><span className="da-label">{r.label}</span><b className="da-need">{remaining} {isCourses ? "course" + (remaining > 1 ? "s" : "") : "cr"} left</b></div>
+                        {codes.length > 0 && (
+                          <div className="da-unmet-courses">
+                            <span className="da-unmet-lbl">Take one of:</span>
+                            {codes.map((id) => <span key={id} className="da-chip">{id.replace(/([A-Z])(\d)/, "$1 $2")}</span>)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })()}
 
           <section className="island set-card">
             <h3 className="set-h">Courses completed <span className="set-val">{earned.length}</span></h3>
@@ -727,7 +758,7 @@ function MajorsMinors({ majorId, minorIds, onMajor, onToggleMinor, onClose, onCo
           ))}
         </div>
         <div className="mm-foot">
-          <button className="mm-compare" onClick={onCompare}>⚖ Compare programs</button>
+          <button className="mm-compare" onClick={onCompare}><span className="mm-ic">⚖</span> Compare programs</button>
           <button className="btn" onClick={onClose}>Save &amp; close</button>
         </div>
       </div>
@@ -764,7 +795,7 @@ function bookmarkCard(bm, completedSet, ipSet, chosenSet, programs) {
   return { ...compareProgram(resolveProgram(bm.id), completedSet, withPlanned), exact: false, needsAudit: true };
 }
 
-function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded, bookmarks, toggleBookmark, runAuditNow }) {
+function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, programs, onClose, embedded, bookmarks, toggleBookmark, runAuditNow, onOpenDetail }) {
   const [tab, setTab] = useState("majors");
   const [detailed, setDetailed] = useState(false);
   const [q, setQ] = useState("");
@@ -856,18 +887,24 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
               const estimates = results.filter((r) => !r.exact).map((r) => ({ id: r.id, level: tab === "majors" ? "major" : "minor", name: r.name }));
               return <button className="mm-compare" disabled={!estimates.length} onClick={() => runAuditNow(estimates)}>⟳ Auto-run DARS on all{estimates.length ? ` (${estimates.length})` : ""}</button>;
             })()}
-            <label className="cmp-detail-toggle"><input type="checkbox" checked={detailed} onChange={(e) => setDetailed(e.target.checked)} /> Detailed view — show required courses</label>
+            <button className={`cmp-detail-toggle ${detailed ? "on" : ""}`} onClick={() => setDetailed(!detailed)}>▦ Detailed view — show required courses</button>
           </div>
           <div className="cmp-grid">
             {results.map((r, i) => {
               const open = r.cats.filter((c) => c.remaining > 0).sort((a, b) => b.remaining - a.remaining);
               const met = r.cats.filter((c) => c.remaining <= 0);
+              const lvl = tab === "majors" ? "major" : "minor";
+              const on = bookmarks?.some((b) => b.id === r.id && b.level === lvl);
+              const auditEntry = r.exact && programs ? findAudit(r.name, programs, lvl) : null;
               return (
-                <div key={r.id} className={`island cmp-card ${i === 0 ? "best" : ""}`}>
-                  {i === 0 && results.length > 1 && <div className="cmp-badge">Closest to done</div>}
-                  {toggleBookmark && (() => { const lvl = tab === "majors" ? "major" : "minor"; const on = bookmarks?.some((b) => b.id === r.id && b.level === lvl);
-                    return <button className={`cmp-star ${on ? "on" : ""}`} title={on ? "Remove bookmark" : "Bookmark to track"} onClick={() => toggleBookmark({ id: r.id, level: lvl, name: r.name })}>{on ? "★" : "☆"}</button>; })()}
-                  <div className="cmp-name">{r.name} {r.exact ? <span className="cmp-exact">✓ exact · DARS</span> : <span className="cmp-est">estimate</span>}</div>
+                <div key={r.id} className={`island cmp-card ${i === 0 && results.length > 1 ? "best" : ""}`}>
+                  <div className="cmp-head">
+                    <div className="cmp-head-l">
+                      <div className="cmp-name">{r.name}</div>
+                      <div className="cmp-tags">{r.exact ? <span className="cmp-exact">✓ exact · DARS</span> : <span className="cmp-est">estimate</span>}{i === 0 && results.length > 1 && <span className="cmp-badge">Closest to done</span>}</div>
+                    </div>
+                    {toggleBookmark && <button className={`cmp-star ${on ? "on" : ""}`} title={on ? "Remove bookmark" : "Bookmark to track"} onClick={() => toggleBookmark({ id: r.id, level: lvl, name: r.name })}>{on ? "★" : "☆"}</button>}
+                  </div>
                   <div className="cmp-big"><b>{r.remaining}</b> {unitBig} left{r.remCourses > 0 ? <> <span className="cmp-plus">+ {r.remCourses} required course{r.remCourses > 1 ? "s" : ""}</span></> : null} <span className="cmp-pct">· {r.pct}% done</span></div>
                   <div className="bar"><div style={{ width: `${Math.min(100, r.pct)}%` }} /></div>
                   <div className="cmp-cats">
@@ -888,8 +925,11 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
                     {open.length === 0 && <div className="cmp-cat done">All requirements met 🎉</div>}
                     {met.length > 0 && open.length > 0 && <div className="cmp-cat met">✓ {met.length} requirement{met.length > 1 ? "s" : ""} already satisfied</div>}
                   </div>
+                  {auditEntry && onOpenDetail && (
+                    <button className="cmp-audit-btn detail" onClick={() => onOpenDetail(auditEntry)}>⤢ Open detailed view</button>
+                  )}
                   {r.needsAudit && runAuditNow && (
-                    <button className="cmp-audit-btn" onClick={() => runAuditNow({ id: r.id, level: tab === "majors" ? "major" : "minor", name: r.name })}>⟳ Auto-run DARS for exact requirements</button>
+                    <button className="cmp-audit-btn" onClick={() => runAuditNow({ id: r.id, level: lvl, name: r.name })}>⟳ Auto-run DARS for exact requirements</button>
                   )}
                 </div>
               );
@@ -917,7 +957,7 @@ const WIDGET_DEFS = [
   { key: "orb", label: "Assistant orb", desc: "The floating radial menu" },
   { key: "clock", label: "Clock", desc: "Time & location, top-right" },
 ];
-export const DEFAULT_SETTINGS = { theme: "aurora", blur: 16, dim: 50, widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
+export const DEFAULT_SETTINGS = { theme: "aurora", blur: 15, dim: 10, defaultView: "plan", widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
 
 // Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
 function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing }) {
@@ -977,18 +1017,32 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
               </div>
             </section>
             <section className="island set-card">
-              <h3 className="set-h">Liquid-glass blur <span className="set-val">{settings.blur}px</span></h3>
+              <div className="set-h" style={{ justifyContent: "space-between" }}>
+                <span>Glass &amp; background</span>
+                <button className="set-reset" onClick={() => setS({ blur: DEFAULT_SETTINGS.blur, dim: DEFAULT_SETTINGS.dim, theme: DEFAULT_SETTINGS.theme })}>↺ Reset to defaults</button>
+              </div>
+              <div className="set-slider-h">Liquid-glass blur <span className="set-val">{settings.blur}px</span></div>
               <input type="range" min="0" max="60" value={settings.blur} onChange={(e) => setS({ blur: +e.target.value })} className="set-range" />
-              <p className="set-note">Lower = crisper and more readable; higher = frostier glass.</p>
-              <h3 className="set-h" style={{ marginTop: 22 }}>Background dim <span className="set-val">{settings.dim}%</span></h3>
+              <p className="set-note">Lower = crisper and more readable; higher = frostier glass. Default 15px.</p>
+              <div className="set-slider-h" style={{ marginTop: 20 }}>Background dim <span className="set-val">{settings.dim}%</span></div>
               <input type="range" min="0" max="85" value={settings.dim} onChange={(e) => setS({ dim: +e.target.value })} className="set-range" />
-              <p className="set-note">How much the photo behind the glass is darkened.</p>
+              <p className="set-note">How much the photo behind the glass is darkened. Default 10%.</p>
             </section>
           </div>
         )}
 
         {tab === "widgets" && (
           <div className="set-scroll">
+            <section className="island set-card">
+              <h3 className="set-h">Startup</h3>
+              <label className="set-toggle">
+                <div><b>Default view</b><span>What Liquid opens to each time</span></div>
+                <select className="set-select" value={settings.defaultView || "plan"} onChange={(e) => setS({ defaultView: e.target.value })}>
+                  <option value="plan">Timeline plan</option>
+                  <option value="catalog">Course catalog</option>
+                </select>
+              </label>
+            </section>
             <section className="island set-card">
               <h3 className="set-h">Show / hide widgets</h3>
               {WIDGET_DEFS.map((d) => (
@@ -1007,7 +1061,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
 
 // ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
 function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose,
-  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow }) {
+  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow, onOpenDetail }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
@@ -1101,13 +1155,13 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
         {mode === "compare" && (
           <CompareView embedded completedSet={completedSet} ipSet={ipSet} currentMajorId={majorId}
             currentMinorIds={minorIds} programs={programs} onClose={() => setMode("plan")}
-            bookmarks={bookmarks} toggleBookmark={toggleBookmark} runAuditNow={runAuditNow} />
+            bookmarks={bookmarks} toggleBookmark={toggleBookmark} runAuditNow={runAuditNow} onOpenDetail={onOpenDetail} />
         )}
 
         {mode === "saved" && (
           <SavedPanel bookmarks={bookmarks} toggleBookmark={toggleBookmark} completedSet={completedSet}
             ipSet={ipSet} chosenSet={chosenSet} programs={programs} requestAudit={runAuditNow}
-            onBrowse={() => setMode("programs")} />
+            onBrowse={() => setMode("programs")} onOpenDetail={onOpenDetail} />
         )}
       </div>
       {viewMore && (
@@ -1170,7 +1224,7 @@ function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, on
 
 // Saved / bookmarked programs — a watchlist whose progress updates as you take
 // and PLAN courses. Exact where DARS has been run; estimate otherwise.
-function SavedPanel({ bookmarks, toggleBookmark, completedSet, ipSet, chosenSet, programs, requestAudit, onBrowse }) {
+function SavedPanel({ bookmarks, toggleBookmark, completedSet, ipSet, chosenSet, programs, requestAudit, onBrowse, onOpenDetail }) {
   const cards = (bookmarks || [])
     .map((b) => ({ b, card: bookmarkCard(b, completedSet, ipSet, chosenSet, programs) }))
     .sort((x, y) => ((x.card.remaining || 0) + (x.card.remCourses || 0) * 5) - ((y.card.remaining || 0) + (y.card.remCourses || 0) * 5));
@@ -1203,6 +1257,8 @@ function SavedPanel({ bookmarks, toggleBookmark, completedSet, ipSet, chosenSet,
                 {open.map((c, j) => <div key={c.label + j} className="cmp-cat"><span>{c.label}</span><b>{c.remaining}{c.unit === "cr" ? " cr" : " left"}</b></div>)}
                 {open.length === 0 && <div className="cmp-cat done">All requirements met 🎉</div>}
               </div>
+              {(() => { const entry = card.exact && programs ? findAudit(b.name, programs, b.level) : null;
+                return entry && onOpenDetail ? <button className="sv-audit detail" onClick={() => onOpenDetail(entry)}>⤢ Open detailed view</button> : null; })()}
               {card.needsAudit && requestAudit && (
                 <button className="sv-audit" onClick={() => requestAudit(b)}>⟳ Auto-run DARS for exact numbers</button>
               )}
@@ -1316,6 +1372,8 @@ export default function App() {
   const [designMode, setDesignMode] = useState("plan"); // plan | programs | compare (studio tabs)
   const [showAccount, setShowAccount] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [detailSource, setDetailSource] = useState(null); // a program audit entry, or null = current snapshot
+  const openDetail = (src) => { setDetailSource(src || null); setShowDesign(false); setShowAccount(false); setShowDetail(true); };
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
@@ -1333,6 +1391,8 @@ export default function App() {
     r.style.setProperty("--glass-blur", (settings.blur ?? 34) + "px");
     r.style.setProperty("--bg-dim", String((settings.dim ?? 50) / 100));
   }, [settings]);
+  // Open to the user's chosen default view (once, on mount).
+  useEffect(() => { const dv = settings.defaultView; if (dv === "plan" || dv === "catalog") setView(dv); }, []); // eslint-disable-line
   const wid = settings.widgets || {};
   const [courseTerms, setCourseTerms] = useState({});
   const didAutoSync = useRef(false);
@@ -1462,6 +1522,7 @@ export default function App() {
       // Tell the user to re-login instead of silently doing nothing.
       if (Date.now() - startAt > 85000) {
         clearInterval(auditPollRef.current);
+        setAuditRunning(false); setAuditProgress(0);
         setAuditNeedsLogin(true);
         setAuditToast("MyPlan didn't respond — your UW sign-in may have expired. Open MyPlan, sign in, then try again.");
         return;
@@ -1472,6 +1533,8 @@ export default function App() {
           replaceFromSnapshot(snap);
           clearInterval(auditPollRef.current);
           setAuditNeedsLogin(false);
+          setAuditProgress(100);
+          setTimeout(() => { setAuditRunning(false); setAuditProgress(0); }, 1400);
           setAuditToast("✓ DARS refresh complete — your numbers are now exact.");
           setTimeout(() => setAuditToast(""), 7000);
         }
@@ -1522,6 +1585,7 @@ export default function App() {
     // force:true so it re-runs even though we already have this program's audit
     for (const b of items) { try { await enqueueAudit(token, { name: b.name, level: b.level, force: true }); } catch { /* */ } }
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
+    setAuditNeedsLogin(false); setAuditRunning(true); setAuditProgress(6);
     startAuditPolling();
     setAuditToast("Refreshing from MyPlan in the background — a tab opens quietly and closes itself when done.");
     setTimeout(() => setAuditToast(""), 9000);
@@ -1531,6 +1595,15 @@ export default function App() {
   // page so the extension processes the queue right away. Returns a status.
   const [auditToast, setAuditToast] = useState("");
   const [auditNeedsLogin, setAuditNeedsLogin] = useState(false);
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditProgress, setAuditProgress] = useState(0);
+  // Ease a progress bar toward ~92% while DARS runs (exact time is unknown); it
+  // snaps to 100% the moment the fresh audit lands.
+  useEffect(() => {
+    if (!auditRunning) return;
+    const t = setInterval(() => setAuditProgress((p) => (p < 92 ? p + (92 - p) * 0.05 + 0.6 : p)), 700);
+    return () => clearInterval(t);
+  }, [auditRunning]);
   const runAuditNow = async (items) => {
     const list = (Array.isArray(items) ? items : [items]).filter((b) => b?.name && !findAudit(b.name, snapshot?.programs, b.level));
     if (!token) { setAuditToast("Sign in first to auto-run DARS."); return; }
@@ -1541,6 +1614,7 @@ export default function App() {
     // The extension runs the whole batch in ONE hidden background tab that
     // closes itself when done — no tabs to manage.
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
+    if (ok) { setAuditNeedsLogin(false); setAuditRunning(true); setAuditProgress(6); }
     startAuditPolling();
     setAuditToast(ok
       ? `Running DARS for ${ok} program${ok > 1 ? "s" : ""} in the background — a MyPlan tab opens quietly and closes itself when done. Exact numbers appear here automatically.`
@@ -1570,8 +1644,14 @@ export default function App() {
   return (
     <>
       <Sky />
+      {auditRunning && (
+        <div className="audit-progress island">
+          <div className="ap-top"><span className="ap-spin" /> Running DARS in the background<b>{Math.round(auditProgress)}%</b></div>
+          <div className="ap-track"><div className="ap-fill" style={{ width: `${auditProgress}%` }} /></div>
+        </div>
+      )}
       {auditToast && (
-        <div className="audit-toast island">
+        <div className="audit-toast island" style={{ top: auditRunning ? 78 : 22 }}>
           <span>{auditToast}</span>
           {auditNeedsLogin && (
             <button className="audit-toast-btn" onClick={() => { window.open("https://myplan.uw.edu/audit/#/degree", "_blank"); setAuditToast(""); setAuditNeedsLogin(false); }}>Open MyPlan to sign in ↗</button>
@@ -1608,7 +1688,7 @@ export default function App() {
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
-            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} onDetailed={() => setShowDetail(true)} />}
+            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} onDetailed={() => openDetail(null)} />}
             {wid.quarter !== false && <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />}
             {wid.accountCard !== false && <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
@@ -1648,10 +1728,11 @@ export default function App() {
           onToggleMinor={(id) => { setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (MINORS[id]) requestAudit({ id, level: "minor", name: MINORS[id].name }); }}
           programs={snapshot?.programs}
           bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit} runAuditNow={runAuditNow}
+          onOpenDetail={openDetail}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {showDetail && (
-        <DetailedAuditPage snapshot={snapshot} program={program} completedSet={completedSet} ipSet={ipSet}
+        <DetailedAuditPage snapshot={detailSource || snapshot} program={program} completedSet={completedSet} ipSet={ipSet}
           courseTerms={courseTerms} onClose={() => setShowDetail(false)} />
       )}
       {showAccount && (

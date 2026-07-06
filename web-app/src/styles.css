@@ -520,8 +520,11 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 
 /* Embedded Majors & Minors picker — readable two-column layout */
 .ds-programs { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
-.dp-bar { flex: 0 0 auto; display: flex; gap: 12px; align-items: center; }
-.dp-bar .mm-search { flex: 1 1 auto; margin: 0; }
+.dp-bar { flex: 0 0 auto; display: flex; gap: 14px; align-items: center; }
+.dp-bar .mm-search { flex: 1 1 auto; max-width: 560px; margin: 0; }
+/* item 7: bigger, clearer Compare Programs button with a visible icon */
+.dp-bar .mm-compare { flex: none; font-size: 14.5px; padding: 12px 22px; gap: 9px; }
+.dp-bar .mm-compare .mm-ic { font-size: 17px; }
 .dp-cols { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .dp-col { min-height: 0; display: flex; flex-direction: column; padding: 16px 8px 10px 16px; }
 .dp-col-h { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin-bottom: 12px; padding-right: 8px; }
@@ -560,6 +563,46 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .sv-empty-star { font-size: 42px; color: #f4c452; margin-bottom: 6px; }
 .ds-saved-empty h3 { font-size: 19px; margin: 0 0 8px; }
 .ds-saved-empty p { font-size: 13.5px; color: var(--text-dim); line-height: 1.55; margin: 0 0 18px; }
+
+.sv-audit.detail { border-color: rgba(95,208,168,0.4); background: rgba(95,208,168,0.12); }
+.sv-audit.detail:hover { background: rgba(95,208,168,0.2); }
+
+/* ---- Compare card header: no more star/badge overlap (item 5) ---- */
+.cmp-card { position: relative; padding: 20px; }
+.cmp-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.cmp-head-l { min-width: 0; }
+.cmp-name { font-size: 17px; font-weight: 700; padding: 0; margin: 0; line-height: 1.25; }
+.cmp-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; align-items: center; }
+.cmp-badge { position: static; top: auto; right: auto; }
+.cmp-star { position: static; top: auto; right: auto; flex: none; font-size: 22px; padding: 0 2px; }
+.cmp-card.best .cmp-star { right: auto; }
+
+/* Detailed-view toggle → glass squircle button (item 6) */
+.cmp-detail-toggle { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+  border: 1px solid var(--glass-brd); background: var(--glass-2); color: var(--text-dim); border-radius: 14px;
+  padding: 10px 16px; font-size: 13px; font-weight: 600; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  transition: background .16s, border-color .16s, color .16s, transform .12s; }
+.cmp-detail-toggle:hover { color: var(--text); transform: translateY(-1px); }
+.cmp-detail-toggle.on { color: #fff; border-color: var(--accent); background: linear-gradient(135deg, rgba(139,123,240,0.4), rgba(106,168,255,0.32)); }
+.cmp-audit-btn.detail { border-color: rgba(95,208,168,0.45); background: linear-gradient(135deg, rgba(95,208,168,0.22), rgba(106,168,255,0.16)); }
+.cmp-audit-btn.detail:hover { background: linear-gradient(135deg, rgba(95,208,168,0.34), rgba(106,168,255,0.26)); }
+
+/* ---- Unmet requirements section (item 4) ---- */
+.da-unmet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
+.da-unmet.island { padding: 14px 16px; }
+.da-unmet-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.da-unmet-head .da-label { font-size: 13.5px; line-height: 1.35; }
+.da-unmet-head .da-need { color: var(--ip); font-weight: 700; }
+.da-unmet-courses { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-top: 11px; }
+.da-unmet-lbl { font-size: 11.5px; color: var(--text-faint); margin-right: 2px; }
+.da-chip { font-size: 12px; font-weight: 650; color: var(--text); background: rgba(139,123,240,0.18); border: 1px solid rgba(139,123,240,0.4); border-radius: 8px; padding: 3px 9px; }
+
+/* detail page sits above the studio */
+.account-page.detail-audit { z-index: 46; }
+
+/* This Quarter widget: fit all courses, no clip/scroll, no code wrapping (item 2) */
+.tq-list { display: flex; flex-direction: column; }
+.tq-row .c { white-space: nowrap; min-width: 74px; }
 
 /* Compare embedded inside the studio (in-flow rather than fixed overlay) */
 .course-browser.embedded { position: static; inset: auto; padding: 0; height: auto; flex: 1 1 auto; min-height: 0; z-index: auto; background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
@@ -650,6 +693,26 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .audit-toast-btn:hover { background: linear-gradient(135deg, rgba(139,123,240,0.45), rgba(106,168,255,0.36)); }
 .audit-toast-x { flex: none; border: none; background: transparent; color: var(--text-dim); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px; }
 .audit-toast-x:hover { color: var(--text); }
+
+/* Auto-run DARS live progress bar (item 9) */
+.audit-progress { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 201; width: min(520px, 88vw); padding: 12px 18px; animation: apIn .3s ease; }
+@keyframes apIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.ap-top { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 9px; }
+.ap-top b { margin-left: auto; color: var(--accent); }
+.ap-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.25); border-top-color: var(--accent); animation: apSpin .8s linear infinite; }
+@keyframes apSpin { to { transform: rotate(360deg); } }
+.ap-track { height: 8px; border-radius: 8px; background: var(--track); overflow: hidden; }
+.ap-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); transition: width .7s cubic-bezier(.3,.8,.3,1); position: relative; overflow: hidden; }
+.ap-fill::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent); animation: apSheen 1.4s linear infinite; }
+@keyframes apSheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+
+/* Settings controls */
+.set-reset { border: 1px solid var(--glass-brd); background: var(--glass-2); color: var(--text-dim); border-radius: 10px; padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.set-reset:hover { color: var(--text); border-color: var(--accent); }
+.set-slider-h { font-size: 13.5px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 10px; }
+.set-slider-h .set-val { color: var(--accent); }
+.set-select { border: 1px solid var(--glass-brd); background: var(--field); color: var(--text); border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+.set-h { justify-content: flex-start; }
 .cmp-cats { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; }
 .cmp-cat { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12.5px; color: var(--text-dim); padding: 8px 12px; border-radius: 9px; background: var(--glass-2); border: 1px solid var(--glass-brd); }
 .cmp-cat > span { flex: 1 1 auto; min-width: 0; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
