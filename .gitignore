@@ -17,3 +17,9 @@ site*/
 # OS / editor junk
 .DS_Store
 *.log
+
+# Raw wallpaper sources (multi-GB 4K originals). Only the compressed, web-ready
+# copies in web-app/public/themes/ are committed + deployed. Regenerate with
+# ./compress-backgrounds.sh
+/Themes/
+extension.zip

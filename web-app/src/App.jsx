@@ -113,10 +113,46 @@ const GoogleLogo = () => (<svg viewBox="0 0 48 48" width="18" height="18"><path 
 const AppleLogo = () => (<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><path d="M16.37 12.62c.03 3.27 2.86 4.35 2.9 4.37-.02.08-.45 1.55-1.49 3.07-.9 1.31-1.83 2.61-3.3 2.64-1.44.03-1.9-.85-3.55-.85-1.64 0-2.16.82-3.52.88-1.42.05-2.5-1.42-3.41-2.72C.66 19.32-.74 14.46 1.2 11.18c.96-1.63 2.68-2.66 4.54-2.69 1.39-.03 2.7.94 3.55.94.85 0 2.44-1.16 4.11-.99.7.03 2.67.28 3.93 2.13-.1.06-2.35 1.37-2.33 4.09M13.6 5.34c.75-.91 1.26-2.18 1.12-3.44-1.08.04-2.39.72-3.17 1.63-.7.8-1.31 2.09-1.15 3.32 1.21.09 2.44-.61 3.2-1.51"/></svg>);
 
 // ---- background: just the photo behind the glass (no gradient) -------------
+// Each theme maps to a background in /public/themes/<theme>/. Some are looping
+// videos, some are stills — both are fine. Themes with day+night footage switch
+// by time of day; the rest use one file. Missing files fall back to the photo.
+const THEME_BG = {
+  "tahoe": { kind: "video", variants: true },
+  "goa-beaches": { kind: "video", variants: false },
+  "goa-coast": { kind: "video", variants: false },
+  "sequoia": { kind: "video", variants: false },
+  "tea-gardens": { kind: "video", variants: true },
+  "ganges": { kind: "image", variants: false },
+  "golden-gate": { kind: "image", variants: true },
+};
+function themeBg(theme) {
+  const t = THEME_BG[theme];
+  if (!t) return null;
+  const ext = t.kind === "video" ? "mp4" : "jpg";
+  let name = "still";
+  if (t.variants) { const h = new Date().getHours(); name = (h >= 6 && h < 18) ? "day" : "night"; }
+  return { kind: t.kind, src: `/themes/${theme}/${name}.${ext}` };
+}
 function Sky() {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const on = () => force((x) => x + 1);
+    window.addEventListener("lp-theme", on);
+    const iv = setInterval(on, 10 * 60 * 1000); // re-check time-of-day every 10 min
+    return () => { window.removeEventListener("lp-theme", on); clearInterval(iv); };
+  }, []);
+  const theme = (typeof document !== "undefined" && document.documentElement.dataset.theme) || "tahoe";
+  const bg = themeBg(theme);
+  const photo = bg && bg.kind === "image" ? bg.src : bgUrl;
   return (
     <>
-      <div className="bg-photo" style={{ backgroundImage: `url(${bgUrl})` }} aria-hidden />
+      <div className="bg-photo" style={{ backgroundImage: `url(${photo})` }} aria-hidden />
+      {bg && bg.kind === "video" && (
+        <video key={bg.src} className="bg-video" autoPlay muted loop playsInline preload="auto" aria-hidden
+          onError={(e) => { e.currentTarget.style.display = "none"; }}>
+          <source src={bg.src} type="video/mp4" />
+        </video>
+      )}
       <div className="bg-tint" aria-hidden />
     </>
   );
@@ -740,7 +776,7 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
           {tab === "rec" && (
             <>
               <p className="cd-note">Ranked by how much of what you <b>still need</b> each course covers — courses that only fill areas you've finished sink to the bottom.</p>
-              <div className="pick-grid">
+              <div className={`pick-grid ${top.length <= 12 ? "fill" : ""}`}>
                 {top.map((r) => <CourseRow key={r.id} id={r.id} reasons={r.reasons} chosen={chosenSet.has(r.id)} onAdd={() => addChosen(r.id)} onRemove={() => removeChosen(r.id)} />)}
               </div>
             </>
@@ -748,7 +784,7 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
           {tab === "all" && (
             <>
               <p className="cd-note">{all.length.toLocaleString()} course{all.length === 1 ? "" : "s"}{areas.length ? ` covering ${areas.map((a) => (SHORT_AREA[a] || a)).join(" + ")}` : ""}{creds.length ? ` · ${creds.sort().join("/")} cr` : ""}.</p>
-              <div className="pick-grid">
+              <div className={`pick-grid ${all.length <= 12 ? "fill" : ""}`}>
                 {all.slice(0, 300).map((c) => <CourseRow key={c.id} id={c.id} chosen={chosenSet.has(c.id)} onAdd={() => addChosen(c.id)} onRemove={() => removeChosen(c.id)} />)}
               </div>
               {all.length > 300 && <p className="cd-note" style={{ textAlign: "center", marginTop: 16 }}>Showing the first 300 — narrow with search or filters to see the rest.</p>}
@@ -1251,12 +1287,15 @@ function CourseDetailsPage({ courseId, onClose }) {
 // else just loads the published catalog from the server automatically.
 const DEV_EMAILS = ["aarana@uw.edu"];
 
+// Themes are the real wallpapers in /public/themes. Each id matches its folder.
 const THEMES = [
-  { id: "aurora", name: "Aurora", accent: "#8b7bf0", accent2: "#6aa8ff" },
-  { id: "ocean", name: "Ocean", accent: "#4aa8ff", accent2: "#41e0c8" },
-  { id: "sunset", name: "Sunset", accent: "#ff8a6b", accent2: "#f6c14e" },
-  { id: "forest", name: "Forest", accent: "#48c9a0", accent2: "#9bd66a" },
-  { id: "rose", name: "Rose", accent: "#f472b6", accent2: "#b57bf0" },
+  { id: "tahoe", name: "Tahoe", accent: "#8b7bf0", accent2: "#6aa8ff" },
+  { id: "goa-beaches", name: "Goa Beaches", accent: "#24c7be", accent2: "#46a6ff" },
+  { id: "goa-coast", name: "Goa Coast", accent: "#ff8a6b", accent2: "#f6c14e" },
+  { id: "sequoia", name: "Sequoia", accent: "#4ac999", accent2: "#a6d96a" },
+  { id: "tea-gardens", name: "Tea Gardens", accent: "#6fcf97", accent2: "#b98bf0" },
+  { id: "ganges", name: "Ganges", accent: "#f2a65a", accent2: "#ef6f6c" },
+  { id: "golden-gate", name: "Golden Gate", accent: "#ff9d5c", accent2: "#ff6f91" },
 ];
 const WIDGET_DEFS = [
   { key: "audit", label: "Degree Audit", desc: "Progress, credits and GPA card" },
@@ -1265,7 +1304,7 @@ const WIDGET_DEFS = [
   { key: "orb", label: "Assistant orb", desc: "The floating radial menu" },
   { key: "clock", label: "Clock", desc: "Time & location, top-right" },
 ];
-export const DEFAULT_SETTINGS = { theme: "aurora", blur: 15, dim: 10, defaultView: "plan", widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
+export const DEFAULT_SETTINGS = { theme: "tahoe", blur: 15, dim: 10, defaultView: "plan", widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
 
 // Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
 function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape }) {
@@ -1340,7 +1379,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
               <div className="set-themes">
                 {THEMES.map((t) => (
                   <button key={t.id} className={`set-theme ${settings.theme === t.id ? "on" : ""}`} onClick={() => setS({ theme: t.id })}>
-                    <span className="set-swatch" style={{ background: `linear-gradient(135deg, ${t.accent}, ${t.accent2})` }} />
+                    <span className="set-swatch" style={{ backgroundImage: `linear-gradient(135deg, ${t.accent}55, ${t.accent2}55), url(/themes/${t.id}/thumb.jpg)` }} />
                     <span>{t.name}</span>
                   </button>
                 ))}
@@ -1352,10 +1391,10 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
                 <button className="set-reset" onClick={() => setS({ blur: DEFAULT_SETTINGS.blur, dim: DEFAULT_SETTINGS.dim, theme: DEFAULT_SETTINGS.theme })}>↺ Reset to defaults</button>
               </div>
               <div className="set-slider-h">Liquid-glass blur <span className="set-val">{settings.blur}px</span></div>
-              <input type="range" min="0" max="60" value={settings.blur} onChange={(e) => setS({ blur: +e.target.value })} className="set-range" />
+              <input type="range" min="0" max="60" value={settings.blur} onChange={(e) => setS({ blur: +e.target.value })} className="set-range" style={{ "--fill": `${(settings.blur / 60) * 100}%` }} />
               <p className="set-note">Lower = crisper and more readable; higher = frostier glass. Default 15px.</p>
               <div className="set-slider-h" style={{ marginTop: 20 }}>Background dim <span className="set-val">{settings.dim}%</span></div>
-              <input type="range" min="0" max="85" value={settings.dim} onChange={(e) => setS({ dim: +e.target.value })} className="set-range" />
+              <input type="range" min="0" max="85" value={settings.dim} onChange={(e) => setS({ dim: +e.target.value })} className="set-range" style={{ "--fill": `${(settings.dim / 85) * 100}%` }} />
               <p className="set-note">How much the photo behind the glass is darkened. Default 10%.</p>
             </section>
           </div>
@@ -1751,6 +1790,8 @@ export default function App() {
     r.style.setProperty("--accent-2", t.accent2);
     r.style.setProperty("--glass-blur", (settings.blur ?? 34) + "px");
     r.style.setProperty("--bg-dim", String((settings.dim ?? 50) / 100));
+    r.dataset.theme = t.id; // Sky reads this to pick the matching background video
+    window.dispatchEvent(new Event("lp-theme"));
   }, [settings]);
   // Open to the user's chosen default view (once, on mount).
   useEffect(() => { const dv = settings.defaultView; if (dv === "plan" || dv === "catalog") setView(dv); }, []); // eslint-disable-line
