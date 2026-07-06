@@ -496,7 +496,7 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
             <h2>{snapshot?.program || program?.name || "Degree"}</h2>
             <p>{snapshot?.catalogYear ? `Catalog ${snapshot.catalogYear} · ` : ""}{snapshot?.gpa ? `GPA ${snapshot.gpa} · ` : ""}{earnedCr} / {total} cr · {pct}% complete{a.inProgress ? ` · ${a.inProgress} in progress` : ""}</p>
           </div>
-          <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
+          <div className="ds-actions"><button className="page-close" onClick={onClose}>✕ Close</button><div className="ds-hint">or press Esc · slide left for the menu</div></div>
         </div>
         <div className="set-scroll detail-scroll">
           <section className="island set-card">
@@ -559,7 +559,7 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
                 <div key={t} className="da-term island">
                   <div className="da-term-h">{termLabel(t)} <span>{byTerm[t].length}</span></div>
                   {byTerm[t].map((id) => (
-                    <div key={id} className="da-course"><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
+                    <div key={id} className="da-course clickable" title="Course details" onClick={() => window.dispatchEvent(new CustomEvent("lp-open-course", { detail: fmtId(id) }))}><b>{fmtId(id)}</b><span>{COURSES[id]?.title || ""}</span>{COURSES[id]?.credits ? <em>{COURSES[id].credits} cr</em> : null}</div>
                   ))}
                 </div>
               ))}
@@ -594,7 +594,7 @@ function ThisQuarter({ ipSet, courseTerms }) {
       <div className="eyebrow">This Quarter <span className="pill-sm">{cr} cr</span></div>
       <div style={{ marginTop: 12 }}>
         {list.map((id) => (
-          <div key={id} className="tq-row"><i style={{ background: CAT_VAR[COURSES[id].category] }} /><span className="c">{id.replace(/([A-Z])(\d)/, "$1 $2")}</span><span className="t">{COURSES[id].title}</span></div>
+          <div key={id} className="tq-row clickable" title="Course details" onClick={() => window.dispatchEvent(new CustomEvent("lp-open-course", { detail: id.replace(/([A-Z])(\d)/, "$1 $2") }))}><i style={{ background: CAT_VAR[COURSES[id].category] }} /><span className="c">{id.replace(/([A-Z])(\d)/, "$1 $2")}</span><span className="t">{COURSES[id].title}</span></div>
         ))}
         {list.length === 0 && <div className="rb-empty">No enrolled courses — sync MyPlan.</div>}
       </div>
@@ -970,6 +970,7 @@ function offeredLabel(code) {
 // ---- Course Details: DawgPath grade distribution + info, in glass theme ------
 function CourseDetailsPage({ courseId, onClose }) {
   const [data, setData] = useState(undefined); // undefined = loading, null = unavailable
+  const [selBar, setSelBar] = useState(null);   // clicked grade bar → { gpa, count, pct }
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -998,7 +999,7 @@ function CourseDetailsPage({ courseId, onClose }) {
             <h2>{fmtId}{title && title !== fmtId ? ` — ${title}` : ""}</h2>
             <p>{(data?.credits || local?.credits) ? `${data?.credits || local?.credits} credits` : ""}{data?.offered ? ` · Offered ${offeredLabel(data.offered)}` : ""}</p>
           </div>
-          <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
+          <div className="ds-actions"><button className="page-close" onClick={onClose}>✕ Close</button><div className="ds-hint">or press Esc · slide left for the menu</div></div>
         </div>
 
         {data === undefined && <div className="cd-loading island"><span className="ap-spin" /> Loading course info from DawgPath…</div>}
@@ -1021,9 +1022,34 @@ function CourseDetailsPage({ courseId, onClose }) {
                   {data.offered && <div><span>Offered</span><b>{offeredLabel(data.offered)}</b></div>}
                   {data.prereq && <div><span>Prereqs</span><b>{data.prereq}</b></div>}
                 </div>
-                <h3 className="set-h" style={{ marginTop: 20 }}>Professor &amp; ratings</h3>
-                <p className="cd-desc">Instructors vary by section and quarter — pick a section on MyPlan for the exact professor, then check their rating.</p>
-                <a className="cd-rmp" href={rmp + encodeURIComponent(subj)} target="_blank" rel="noreferrer">★ Search {subj} professors on RateMyProfessors ↗</a>
+                <h3 className="set-h" style={{ marginTop: 20 }}>Professors{data.term ? ` · ${data.term}` : ""}</h3>
+                {data.professors && data.professors.length ? (
+                  <div className="cd-profs">
+                    {data.professors.map((p) => {
+                      const secs = (data.sections || []).filter((s) => s.instructor === p.name);
+                      return (
+                        <div key={p.name} className="cd-prof">
+                          <div className="cd-prof-head">
+                            <div className="cd-prof-name"><b>{p.name}</b>
+                              <span>{secs.map((s) => `Sec ${s.code}`).join(", ")}{secs[0] && secs[0].meet && secs[0].meet[0] ? ` · ${secs[0].meet[0]}` : ""}</span></div>
+                            {p.found
+                              ? <div className="cd-rating"><b>{Number(p.rating).toFixed(1)}</b><span>★</span></div>
+                              : <span className="cd-norate">Not rated</span>}
+                          </div>
+                          <div className="cd-prof-foot">
+                            {p.found ? <span>{p.numRatings} ratings · difficulty {Number(p.difficulty).toFixed(1)}</span> : <span>No RateMyProfessors reviews found.</span>}
+                            <a href={p.found && p.legacyId ? `https://www.ratemyprofessors.com/professor/${p.legacyId}` : rmp + encodeURIComponent(p.name)} target="_blank" rel="noreferrer">RateMyProfessors ↗</a>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    <p className="cd-desc">No upcoming sections with listed instructors{data.term ? ` for ${data.term}` : ""}. Instructors vary by quarter.</p>
+                    <a className="cd-rmp" href={rmp + encodeURIComponent(subj)} target="_blank" rel="noreferrer">★ Search {subj} professors on RateMyProfessors ↗</a>
+                  </>
+                )}
               </section>
 
               <section className="island cd-panel">
@@ -1031,10 +1057,21 @@ function CourseDetailsPage({ courseId, onClose }) {
                 <p className="cd-stat"><b>{avg ? avg.toFixed(2) : "—"}</b> average GPA · {totalN.toLocaleString()} grades</p>
                 {distro.length ? (
                   <div className="gd-wrap">
+                    <div className={`gd-callout ${selBar ? "on" : ""}`}>
+                      {selBar
+                        ? <><b>{(+selBar.gpa).toFixed(1)} GPA</b> — {selBar.count.toLocaleString()} student{selBar.count === 1 ? "" : "s"} <span className="gd-pct">{selBar.pct}%</span> of the class</>
+                        : <span className="gd-hint">Tap a bar to see the % of students who earned that grade.</span>}
+                    </div>
                     <div className="gd-chart">
-                      {distro.map((g, i) => (
-                        <div key={i} className="gd-bar" style={{ height: `${((g.count || 0) / maxC) * 100}%` }} title={`${g.gpa} GPA · ${g.count}`} />
-                      ))}
+                      {distro.map((g, i) => {
+                        const pct = totalN ? Math.round(((g.count || 0) / totalN) * 100) : 0;
+                        const isSel = selBar && selBar.gpa === g.gpa;
+                        return (
+                          <div key={i} className={`gd-bar ${isSel ? "sel" : ""}`} style={{ height: `${((g.count || 0) / maxC) * 100}%` }}
+                            title={`${g.gpa} GPA · ${g.count} (${pct}%)`}
+                            onClick={() => setSelBar(isSel ? null : { gpa: g.gpa, count: g.count || 0, pct })} />
+                        );
+                      })}
                     </div>
                     <div className="gd-axis"><span>0.0</span><span>1.0</span><span>2.0</span><span>3.0</span><span>4.0</span></div>
                   </div>
@@ -1085,7 +1122,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
       <div className="ds-inner">
         <div className="ds-topbar">
           <div><div className="ds-eyebrow">Account &amp; Settings</div><h2>{user.name || "Your account"}</h2><p>{user.email}</p></div>
-          <div className="ds-actions"><div className="ds-hint">← Move to the left edge for the menu · Home to go back</div></div>
+          <div className="ds-actions"><button className="page-close" onClick={onClose}>✕ Close</button><div className="ds-hint">or press Esc · slide left for the menu</div></div>
         </div>
         <div className="ds-modes">
           <button className={tab === "account" ? "active" : ""} onClick={() => setTab("account")}>Account</button>
@@ -1202,7 +1239,8 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
           </div>
           <div className="ds-actions">
             {mode === "plan" && <button className="btn ds-auto" onClick={onAutoPlan}>✦ Auto-plan everything</button>}
-            <div className="ds-hint">← Move to the left edge for the menu · Home to go back</div>
+            <button className="page-close" onClick={onClose}>✕ Close</button>
+            <div className="ds-hint">or press Esc</div>
           </div>
         </div>
 
@@ -1489,6 +1527,29 @@ export default function App() {
     window.addEventListener("lp-open-course", h);
     return () => window.removeEventListener("lp-open-course", h);
   }, []);
+  // Browser Back closes the current overlay instead of leaving the app entirely.
+  const overlayRef = useRef({});
+  overlayRef.current = { courseDetailId, showDetail, showAccount, showDesign };
+  const prevAnyOverlay = useRef(false);
+  useEffect(() => {
+    const onPop = () => {
+      const o = overlayRef.current;
+      const before = (o.courseDetailId ? 1 : 0) + (o.showDetail ? 1 : 0) + (o.showAccount ? 1 : 0) + (o.showDesign ? 1 : 0);
+      if (o.courseDetailId) setCourseDetailId(null);
+      else if (o.showDetail) setShowDetail(false);
+      else if (o.showAccount) setShowAccount(false);
+      else if (o.showDesign) setShowDesign(false);
+      else return; // nothing open — allow the browser to navigate normally
+      if (before > 1) window.history.pushState({ lp: 1 }, ""); // keep trapping while overlays remain
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  useEffect(() => {
+    const any = !!(courseDetailId || showDetail || showAccount || showDesign);
+    if (any && !prevAnyOverlay.current) window.history.pushState({ lp: 1 }, "");
+    prevAnyOverlay.current = any;
+  }, [courseDetailId, showDetail, showAccount, showDesign]);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]

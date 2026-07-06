@@ -1,12 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Liquid — MyPlan Sync",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Auto-imports your UW DARS degree audits into Liquid for exact, per-category major & minor comparison. No copy/paste.",
   "permissions": ["storage", "activeTab", "scripting", "tabs"],
   "host_permissions": [
     "https://myplan.uw.edu/*",
     "https://dawgpath.uw.edu/*",
+    "https://course-app-api.planning.sis.uw.edu/*",
+    "https://www.ratemyprofessors.com/*",
     "https://liquid-planner-api.onrender.com/*",
     "https://*.onrender.com/*",
     "https://*.vercel.app/*",

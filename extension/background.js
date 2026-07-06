@@ -106,21 +106,52 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return false;
   }
 
-  // Fetch a course's DawgPath details (grade distribution, description, offerings)
-  // using the user's UW session. Public data, but requires the UW cookie.
+  // Full course details: DawgPath (grades/info) + MyPlan sections (instructors,
+  // times) + RateMyProfessors ratings for each instructor. Uses the UW session.
   if (msg?.type === "lp-course-details") {
     (async () => {
+      const id = encodeURIComponent(String(msg.courseId || "").replace(/([A-Z])(\d)/, "$1 $2"));
+      const data = {};
+      // 1) DawgPath — grade distribution + description
       try {
-        const id = encodeURIComponent(String(msg.courseId || "").replace(/([A-Z])(\d)/, "$1 $2"));
         const r = await fetch("https://dawgpath.uw.edu/api/v1/courses/details/" + id, { credentials: "include" });
-        if (!r.ok) return sendResponse({ ok: false, status: r.status });
-        const d = await r.json();
-        sendResponse({ ok: true, data: {
+        if (r.ok) { const d = await r.json(); Object.assign(data, {
           courseId: d.course_id, title: d.course_title, credits: d.course_credits,
           description: d.course_description, offered: d.course_offered, prereq: d.prereq_string,
-          gpaDistro: d.gpa_distro || [], concurrent: d.concurrent_courses || [], coi: d.coi_data || null,
-        } });
-      } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
+          gpaDistro: d.gpa_distro || [], concurrent: d.concurrent_courses || [] }); }
+      } catch (e) { /* */ }
+      // 2) MyPlan — sections with instructors + meeting times
+      let profNames = [];
+      try {
+        const r = await fetch("https://course-app-api.planning.sis.uw.edu/api/courses/" + id + "/details", { credentials: "include" });
+        if (r.ok) {
+          const d = await r.json();
+          const t = d.courseOfferingInstitutionList && d.courseOfferingInstitutionList[0] && d.courseOfferingInstitutionList[0].courseOfferingTermList && d.courseOfferingInstitutionList[0].courseOfferingTermList[0];
+          const acts = (t && t.activityOfferingItemList) || [];
+          const lects = acts.filter((s) => s.instructor && s.instructor.trim() && /lecture/i.test(s.activityOfferingType || ""));
+          data.term = t && t.term ? (t.term.termLabel + " " + t.term.year) : "";
+          data.sections = lects.map((s) => ({ code: s.code, instructor: s.instructor,
+            meet: (s.meetingDetailsList || []).map((m) => `${m.days || ""} ${m.time || ""}${m.building ? " · " + m.building + " " + (m.room || "") : ""}`.trim()) }));
+          profNames = [...new Set(lects.map((s) => s.instructor))];
+        }
+      } catch (e) { /* */ }
+      // 3) RateMyProfessors — real ratings per instructor (UW schoolID)
+      const profs = [];
+      for (const name of profNames) {
+        const parts = name.trim().split(/\s+/);
+        const last = parts[parts.length - 1], first = (parts[0] || "").toLowerCase();
+        try {
+          const q = { query: `query{ newSearch{ teachers(query:{text:"${last}", schoolID:"U2Nob29sLTE1MzA="}){ edges{ node{ firstName lastName avgRating numRatings avgDifficulty legacyId } } } } }` };
+          const r = await fetch("https://www.ratemyprofessors.com/graphql", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Basic dGVzdDp0ZXN0" }, body: JSON.stringify(q) });
+          const j = await r.json();
+          const edges = (j && j.data && j.data.newSearch && j.data.newSearch.teachers && j.data.newSearch.teachers.edges) || [];
+          const m = edges.find((e) => e.node.firstName.toLowerCase().slice(0, 4) === first.slice(0, 4)) || edges[0];
+          if (m && m.node) profs.push({ name, rating: m.node.avgRating, numRatings: m.node.numRatings, difficulty: m.node.avgDifficulty, legacyId: m.node.legacyId, found: (m.node.numRatings || 0) > 0 });
+          else profs.push({ name, found: false });
+        } catch (e) { profs.push({ name, found: false }); }
+      }
+      data.professors = profs;
+      sendResponse({ ok: true, data });
     })();
     return true;
   }
