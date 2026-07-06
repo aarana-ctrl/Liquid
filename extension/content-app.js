@@ -27,6 +27,20 @@
         window.postMessage({ source: "liquid-ext", type: "lp-course-res", reqId, resp: resp || { ok: false } }, "*");
       });
     }
+    // Is the MyPlan session alive? (app asks before offering to rebuild catalog)
+    if (e.data.type === "lp-scrape-status-req") {
+      chrome.runtime.sendMessage({ type: "lp-scrape-status" }, (resp) => {
+        window.postMessage({ source: "liquid-ext", type: "lp-scrape-status-res", resp: resp || { ok: false } }, "*");
+      });
+    }
+    // Full catalog scrape → open a streaming port and relay progress to the page.
+    if (e.data.type === "lp-scrape-req") {
+      let port;
+      try { port = chrome.runtime.connect({ name: "lp-scrape" }); }
+      catch (err) { window.postMessage({ source: "liquid-ext", type: "lp-scrape-progress", data: { type: "error", error: "no-extension" } }, "*"); return; }
+      port.onMessage.addListener((m) => window.postMessage({ source: "liquid-ext", type: "lp-scrape-progress", data: m }, "*"));
+      port.onDisconnect.addListener(() => window.postMessage({ source: "liquid-ext", type: "lp-scrape-progress", data: { type: "closed" } }, "*"));
+    }
   });
   // Robustness backstop: independently poll the backend queue every 12s while the
   // app is open, so audits still run even if the page message never fires.

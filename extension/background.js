@@ -196,6 +196,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
+  if (msg?.type === "lp-scrape-status") {
+    (async () => {
+      // Is the MyPlan session alive (so a scrape will actually work)?
+      try {
+        const r = await fetch("https://course-app-api.planning.sis.uw.edu/api/session", { credentials: "include" });
+        const j = await r.json().catch(() => ({}));
+        sendResponse({ ok: r.ok && !!(j.user && j.user.userName), user: j.user && j.user.userName });
+      } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
+    })();
+    return true;
+  }
+
   if (msg?.type === "lp-import") {
     (async () => {
       const s = await readStore();
@@ -216,4 +228,71 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     })();
     return true; // async
   }
+});
+
+// ---- Full catalog scrape ---------------------------------------------------
+// Streams progress over a Port (keeps the service worker alive). Walks every
+// Seattle subject area, runs the same authenticated course search MyPlan itself
+// uses (the student's own session), normalizes each course to a tiny record,
+// and uploads to the backend in chunks. Never opens a tab.
+const GE_MAP = { "A&H": "arts", "SSc": "social", "NSc": "science", "DIV": "diversity", "W": "writing", "C": "writing", "RSN": "quant" };
+
+async function scrapeAllCourses(port) {
+  const s = await readStore();
+  const api = baseUrl(s);
+  if (!s.token || !api) { port.postMessage({ type: "error", error: "not-connected" }); return; }
+  const B = "https://course-app-api.planning.sis.uw.edu/api";
+  // 1) session (csrf + app checksum + netid). If missing, the UW session is dead.
+  let sess;
+  try { sess = await (await fetch(B + "/session", { credentials: "include" })).json(); } catch (e) { /* */ }
+  if (!sess || !sess.csrf || !(sess.user && sess.user.userName)) { port.postMessage({ type: "error", error: "myplan-login" }); return; }
+  const H = { "Content-Type": "application/json", "x-csrf-token": sess.csrf, "x-sis-api-checksum": sess.application && sess.application.checksum };
+  const uname = sess.user.userName;
+  // 2) all subject areas
+  let subs = [];
+  try { subs = await (await fetch(B + "/subjectAreas", { credentials: "include" })).json(); } catch (e) { /* */ }
+  subs = (subs || []).filter((x) => x.campus === "seattle");
+  if (!subs.length) { port.postMessage({ type: "error", error: "no-subjects" }); return; }
+  const seen = new Set();
+  const out = [];
+  const total = subs.length;
+  for (let i = 0; i < subs.length; i++) {
+    const sa = subs[i];
+    try {
+      const body = JSON.stringify({ username: uname, requestId: (crypto.randomUUID ? crypto.randomUUID() : "r" + Date.now() + i), sectionSearch: true, instructorSearch: false, queryString: sa.code, consumerLevel: "UNDERGRADUATE", campus: "seattle", days: [], startTime: "0630", endTime: "2230" });
+      const r = await fetch(B + "/courses", { method: "POST", credentials: "include", headers: H, body });
+      if (r.ok) {
+        const list = await r.json();
+        for (const c of (list || [])) {
+          const id = String(c.code || "").trim();
+          if (!id || seen.has(id)) continue;
+          seen.add(id);
+          const g = [...new Set((c.genEduReqs || []).map((x) => GE_MAP[x]).filter(Boolean))];
+          out.push({ i: id, t: c.title || "", c: (+(c.credit || (c.allCredits && c.allCredits[0]) || 0)) || 0, g, l: (+(c.level || 0)) || 0, s: sa.code });
+        }
+      } else if (r.status === 401 || r.status === 403) {
+        port.postMessage({ type: "error", error: "myplan-login" }); return;
+      }
+    } catch (e) { /* skip this subject */ }
+    port.postMessage({ type: "progress", phase: "scan", done: i + 1, total, count: out.length, subject: sa.code });
+    await new Promise((res) => setTimeout(res, 100)); // be gentle
+  }
+  // 3) upload in chunks + finalize
+  const CH = 500;
+  const chunks = Math.ceil(out.length / CH) || 0;
+  for (let i = 0; i < chunks; i++) {
+    try {
+      await fetch(api + "/api/courses-catalog", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.token }, body: JSON.stringify({ chunk: i, courses: out.slice(i * CH, (i + 1) * CH) }) });
+    } catch (e) { /* */ }
+    port.postMessage({ type: "progress", phase: "upload", done: i + 1, total: chunks, count: out.length });
+  }
+  try {
+    await fetch(api + "/api/courses-catalog", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + s.token }, body: JSON.stringify({ done: true, chunks }) });
+  } catch (e) { /* */ }
+  port.postMessage({ type: "finished", count: out.length, chunks });
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "lp-scrape") return;
+  scrapeAllCourses(port).catch((e) => { try { port.postMessage({ type: "error", error: String(e.message || e) }); } catch (_) { /* */ } });
 });

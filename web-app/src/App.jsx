@@ -1,8 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "react";
 import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript, getDesc } from "./data.js";
 import { mockSignIn } from "./auth.js";
-import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms } from "./api.js";
-import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram, mergeCatalog, registerMajor } from "./data.js";
+import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms, getCourseCatalog } from "./api.js";
+import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram, mergeCatalog, registerMajor, registerCourses } from "./data.js";
 import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit } from "./recommend.js";
 import bgUrl from "./bg.jpg";
 
@@ -661,6 +661,7 @@ function CourseRow({ id, reasons, chosen, onAdd, onRemove }) {
         </div>
         <div className="cd-c-ttl">{c.title}</div>
         {reasons && reasons.length > 0 && <div className="cd-reasons">{reasons.slice(0, 3).map((r, i) => <span key={i} className="rchip">{r}</span>)}</div>}
+        <button className="cd-course-details" onClick={() => window.dispatchEvent(new CustomEvent("lp-open-course", { detail: id.replace(/([A-Z])(\d)/, "$1 $2") }))}>◧ Grades &amp; professors →</button>
       </div>
       {chosen
         ? <button className="cd-add added" onClick={onRemove}>✓ Added</button>
@@ -669,8 +670,13 @@ function CourseRow({ id, reasons, chosen, onAdd, onRemove }) {
   );
 }
 
+const FILTER_AREAS = [["", "All areas"], ["arts", "Arts & Humanities"], ["social", "Social Sciences"], ["science", "Natural Sciences"], ["diversity", "Diversity"], ["writing", "Writing (W)"]];
 function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen, removeChosen, onClose }) {
   const [tab, setTab] = useState("rec");
+  const [q, setQ] = useState("");
+  const [credFilter, setCredFilter] = useState(0);
+  const [areaFilter, setAreaFilter] = useState("");
+  useEffect(() => { const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const pool = useMemo(() => poolForArea(req.area), [req.area]);
 
@@ -684,37 +690,56 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
 
   const remainingMap = useMemo(() => computeRemaining(major, completedSet, ipSet, chosenSet), [major, completedSet, ipSet, chosenSet]);
   const recs = useMemo(() => recommend({ area: req.area, remainingMap, taken, planned: chosenSet, satisfied: taken }), [req.area, remainingMap, taken, chosenSet]);
-  const top = recs.slice(0, 6);
-  const all = pool.filter((c) => !taken.has(c.id)).sort((a, b) => a.id.localeCompare(b.id));
+  const top = recs.slice(0, 8);
+  // "All courses" searches the whole catalog with filters (not just this area).
+  const needle = q.trim().toLowerCase();
+  const all = useMemo(() => Object.values(COURSES)
+    .filter((c) => !taken.has(c.id))
+    .filter((c) => !needle || c.id.toLowerCase().includes(needle.replace(/\s+/g, "")) || c.title.toLowerCase().includes(needle))
+    .filter((c) => !credFilter || c.credits === credFilter)
+    .filter((c) => !areaFilter || (c.gened || [c.category]).includes(areaFilter))
+    .sort((a, b) => a.id.localeCompare(b.id)), [needle, credFilter, areaFilter, taken]);
 
   return (
-    <div className="cd-overlay" onClick={onClose}>
-      <div className="island cd-card" onClick={(e) => e.stopPropagation()}>
-        <div className="cd-head">
-          <div>
-            <div className="cd-title">{req.label}</div>
-            <div className="cd-sub">{isCredits ? `Need ${need} cr · ${haveLabel} · ${remainingCredits} cr left` : `${haveLabel} · need ${need} courses`}</div>
-          </div>
-          <button className="cd-close" onClick={onClose}>×</button>
+    <div className="course-browser category-full">
+      <div className="cb-top">
+        <div>
+          <div className="ds-eyebrow">Add courses</div>
+          <h2>{req.label}</h2>
+          <p>{isCredits ? `Need ${need} cr · ${haveLabel} · ${remainingCredits} cr left` : `${haveLabel} · need ${need} courses`}{remainingCredits === 0 && isCredits ? " · already met (extra courses double-count / electives)" : ""}</p>
         </div>
+        <button className="page-close" onClick={onClose}>✕ Close</button>
+      </div>
+      <div className="cat-bar">
         <div className="cd-tabs">
           <button className={tab === "rec" ? "active" : ""} onClick={() => setTab("rec")}>★ Recommended</button>
-          <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>All available ({all.length})</button>
+          <button className={tab === "all" ? "active" : ""} onClick={() => setTab("all")}>All courses</button>
         </div>
-        <div className="cd-body">
-          {tab === "rec" && (
-            <>
-              <p className="cd-note">Ranked for your degree — credit fit to what you still need, double-counted requirements, and CS relevance, excluding courses you've taken.</p>
-              {remainingCredits === 0 && isCredits && <p className="cd-note" style={{ color: "var(--enrolled)" }}>This requirement is already met — extra courses would double-count or count as electives.</p>}
-              {top.map((r) => (
-                <CourseRow key={r.id} id={r.id} reasons={r.reasons} chosen={chosenSet.has(r.id)} onAdd={() => addChosen(r.id)} onRemove={() => removeChosen(r.id)} />
-              ))}
-            </>
-          )}
-          {tab === "all" && all.map((c) => (
-            <CourseRow key={c.id} id={c.id} chosen={chosenSet.has(c.id)} onAdd={() => addChosen(c.id)} onRemove={() => removeChosen(c.id)} />
-          ))}
-        </div>
+        {tab === "all" && (
+          <div className="cat-filters">
+            <input className="mm-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search courses…" />
+            <select className="set-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>{FILTER_AREAS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+            <select className="set-select" value={credFilter} onChange={(e) => setCredFilter(+e.target.value)}><option value={0}>Any credits</option>{[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n} cr</option>)}</select>
+          </div>
+        )}
+      </div>
+      <div className="cb-scroll">
+        {tab === "rec" && (
+          <>
+            <p className="cd-note">Ranked by how much of what you <b>still need</b> each course covers — courses that only fill areas you've finished sink to the bottom.</p>
+            <div className="cat-grid">
+              {top.map((r) => <CourseRow key={r.id} id={r.id} reasons={r.reasons} chosen={chosenSet.has(r.id)} onAdd={() => addChosen(r.id)} onRemove={() => removeChosen(r.id)} />)}
+            </div>
+          </>
+        )}
+        {tab === "all" && (
+          <>
+            <p className="cd-note">{all.length} course{all.length === 1 ? "" : "s"} — filter by area and credits.</p>
+            <div className="cat-grid">
+              {all.slice(0, 300).map((c) => <CourseRow key={c.id} id={c.id} chosen={chosenSet.has(c.id)} onAdd={() => addChosen(c.id)} onRemove={() => removeChosen(c.id)} />)}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -983,8 +1008,10 @@ function CourseDetailsPage({ courseId, onClose }) {
   const title = data?.title || local?.title || fmtId;
   const distro = (data?.gpaDistro || []).filter((g) => g && g.gpa != null);
   const totalN = distro.reduce((s, g) => s + (g.count || 0), 0);
+  // DawgPath's gpa field is on a 0–40 scale (GPA × 10), so divide by 10.
+  const gpaVal = (g) => (+g.gpa) / 10;
   const graded = distro.filter((g) => +g.gpa > 0);
-  const avg = graded.reduce((s, g) => s + (+g.gpa) * (g.count || 0), 0) / (graded.reduce((s, g) => s + (g.count || 0), 0) || 1);
+  const avg = graded.reduce((s, g) => s + gpaVal(g) * (g.count || 0), 0) / (graded.reduce((s, g) => s + (g.count || 0), 0) || 1);
   const maxC = Math.max(1, ...distro.map((g) => g.count || 0));
   const rmp = `https://www.ratemyprofessors.com/search/professors/1530?q=`; // UW school id on RMP
   const myplan = `https://myplan.uw.edu/course/#/courses/${courseId.replace(/\s+/g, "")}`;
@@ -1059,7 +1086,7 @@ function CourseDetailsPage({ courseId, onClose }) {
                   <div className="gd-wrap">
                     <div className={`gd-callout ${selBar ? "on" : ""}`}>
                       {selBar
-                        ? <><b>{(+selBar.gpa).toFixed(1)} GPA</b> — {selBar.count.toLocaleString()} student{selBar.count === 1 ? "" : "s"} <span className="gd-pct">{selBar.pct}%</span> of the class</>
+                        ? <><b>{(+selBar.gpa / 10).toFixed(1)} GPA</b> — {selBar.count.toLocaleString()} student{selBar.count === 1 ? "" : "s"} <span className="gd-pct">{selBar.pct}%</span> of the class</>
                         : <span className="gd-hint">Tap a bar to see the % of students who earned that grade.</span>}
                     </div>
                     <div className="gd-chart">
@@ -1106,7 +1133,7 @@ const WIDGET_DEFS = [
 export const DEFAULT_SETTINGS = { theme: "aurora", blur: 15, dim: 10, defaultView: "plan", widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
 
 // Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
-function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing }) {
+function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape }) {
   const [tab, setTab] = useState("account");
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -1145,6 +1172,21 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
                 <button className="set-signout" onClick={onSignOut}>Sign out</button>
               </div>
               <p className="set-note">Force refresh re-runs your degree audit in a hidden MyPlan tab that closes itself — no windows to manage.</p>
+            </section>
+
+            <section className="island set-card">
+              <h3 className="set-h">Course catalog</h3>
+              <div className="acct-stats">
+                <div><span>Courses loaded</span><b>{(catalogInfo?.count || 0).toLocaleString()}</b></div>
+                <div><span>Last rebuilt</span><b>{catalogInfo?.updatedAt ? new Date(catalogInfo.updatedAt).toLocaleDateString() : "—"}</b></div>
+              </div>
+              <div className="set-actions">
+                <button className="mm-compare" onClick={startScrape} disabled={scrape?.running}>
+                  {scrape?.running ? `Rebuilding… ${Math.round(scrape.pct)}%` : "⟳ Rebuild full course catalog"}
+                </button>
+              </div>
+              {scrape?.running && <div className="ap-track" style={{ marginTop: 4 }}><div className="ap-fill" style={{ width: `${scrape.pct}%` }} /></div>}
+              <p className="set-note">Pulls every UW-Seattle course from MyPlan (using your signed-in session) so the course pickers are complete. Takes a minute; a progress bar tracks it. Requires an active MyPlan session.</p>
             </section>
           </div>
         )}
@@ -1529,13 +1571,14 @@ export default function App() {
   }, []);
   // Browser Back closes the current overlay instead of leaving the app entirely.
   const overlayRef = useRef({});
-  overlayRef.current = { courseDetailId, showDetail, showAccount, showDesign };
+  overlayRef.current = { courseDetailId, showDetail, showAccount, showDesign, detailReq };
   const prevAnyOverlay = useRef(false);
   useEffect(() => {
     const onPop = () => {
       const o = overlayRef.current;
-      const before = (o.courseDetailId ? 1 : 0) + (o.showDetail ? 1 : 0) + (o.showAccount ? 1 : 0) + (o.showDesign ? 1 : 0);
+      const before = (o.courseDetailId ? 1 : 0) + (o.showDetail ? 1 : 0) + (o.showAccount ? 1 : 0) + (o.showDesign ? 1 : 0) + (o.detailReq ? 1 : 0);
       if (o.courseDetailId) setCourseDetailId(null);
+      else if (o.detailReq) setDetailReq(null);
       else if (o.showDetail) setShowDetail(false);
       else if (o.showAccount) setShowAccount(false);
       else if (o.showDesign) setShowDesign(false);
@@ -1546,10 +1589,10 @@ export default function App() {
     return () => window.removeEventListener("popstate", onPop);
   }, []);
   useEffect(() => {
-    const any = !!(courseDetailId || showDetail || showAccount || showDesign);
+    const any = !!(courseDetailId || showDetail || showAccount || showDesign || detailReq);
     if (any && !prevAnyOverlay.current) window.history.pushState({ lp: 1 }, "");
     prevAnyOverlay.current = any;
-  }, [courseDetailId, showDetail, showAccount, showDesign]);
+  }, [courseDetailId, showDetail, showAccount, showDesign, detailReq]);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
@@ -1627,6 +1670,19 @@ export default function App() {
     getPrograms().then((c) => {
       if (c && ((c.majors && c.majors.length) || (c.minors && c.minors.length))) {
         mergeCatalog({ majors: c.majors, minors: c.minors });
+        setCatalogVersion((v) => v + 1);
+      }
+    }).catch(() => {});
+  }, [user]);
+
+  // Load the full course catalog (scraped from MyPlan) so the course pickers list
+  // every UW-Seattle course, filterable by area and credits.
+  const [catalogInfo, setCatalogInfo] = useState({ count: 0, updatedAt: null });
+  useEffect(() => {
+    getCourseCatalog().then((c) => {
+      if (c && Array.isArray(c.courses) && c.courses.length) {
+        registerCourses(c.courses);
+        setCatalogInfo({ count: c.courses.length, updatedAt: c.updatedAt });
         setCatalogVersion((v) => v + 1);
       }
     }).catch(() => {});
@@ -1780,6 +1836,43 @@ export default function App() {
     const t = setInterval(() => setAuditProgress((p) => (p < 92 ? p + (92 - p) * 0.05 + 0.6 : p)), 700);
     return () => clearInterval(t);
   }, [auditRunning]);
+
+  // ---- Full course-catalog scrape (extension) ----
+  const [scrape, setScrape] = useState({ running: false, phase: "", pct: 0, count: 0, msg: "" });
+  useEffect(() => {
+    const onMsg = (e) => {
+      if (e.source !== window || !e.data || e.data.source !== "liquid-ext") return;
+      if (e.data.type !== "lp-scrape-progress") return;
+      const d = e.data.data || {};
+      if (d.type === "progress") {
+        // Scanning subjects is 0–90%, uploading is 90–100%.
+        const base = d.phase === "upload" ? 90 : 0, span = d.phase === "upload" ? 10 : 90;
+        const pct = d.total ? Math.min(99, base + (d.done / d.total) * span) : 0;
+        setScrape({ running: true, phase: d.phase, pct, count: d.count || 0,
+          msg: d.phase === "upload" ? `Saving ${d.count} courses…` : `Scanning ${d.subject || ""} — ${d.count} courses found` });
+      } else if (d.type === "finished") {
+        setScrape({ running: false, phase: "done", pct: 100, count: d.count || 0, msg: `Catalog rebuilt — ${d.count} courses` });
+        getCourseCatalog().then((c) => {
+          if (c && Array.isArray(c.courses)) { registerCourses(c.courses); setCatalogInfo({ count: c.courses.length, updatedAt: c.updatedAt }); setCatalogVersion((v) => v + 1); }
+        }).catch(() => {});
+        setTimeout(() => setScrape((s) => (s.phase === "done" ? { ...s, phase: "" } : s)), 5000);
+      } else if (d.type === "error" || d.type === "closed") {
+        if (d.type === "closed") return; // normal port close after finish
+        const m = d.error === "myplan-login" ? "Sign into MyPlan first, then rebuild again."
+          : d.error === "not-connected" ? "Sign into Liquid first."
+          : d.error === "no-extension" ? "Install/enable the Liquid extension to rebuild."
+          : "Rebuild failed — try again.";
+        setScrape({ running: false, phase: "error", pct: 0, count: 0, msg: m });
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+  const startScrape = () => {
+    if (scrape.running) return;
+    setScrape({ running: true, phase: "scan", pct: 2, count: 0, msg: "Starting — checking your MyPlan session…" });
+    try { window.postMessage({ source: "liquid", type: "lp-scrape-req" }, "*"); } catch { /* */ }
+  };
   const runAuditNow = async (items) => {
     const list = (Array.isArray(items) ? items : [items]).filter((b) => b?.name && !findAudit(b.name, snapshot?.programs, b.level));
     if (!token) { setAuditToast("Sign in first to auto-run DARS."); return; }
@@ -1824,6 +1917,16 @@ export default function App() {
         <div className="audit-progress island">
           <div className="ap-top"><span className="ap-spin" /> Running DARS in the background<b>{Math.round(auditProgress)}%</b></div>
           <div className="ap-track"><div className="ap-fill" style={{ width: `${auditProgress}%` }} /></div>
+        </div>
+      )}
+      {(scrape.running || scrape.phase === "done" || scrape.phase === "error") && (
+        <div className="audit-progress island" style={{ top: auditRunning ? 92 : 18 }}>
+          <div className="ap-top">
+            {scrape.phase === "error" ? <span className="ap-warn">⚠</span> : scrape.running ? <span className="ap-spin" /> : <span className="ap-done">✓</span>}
+            <span>{scrape.msg}</span>
+            {scrape.running ? <b>{Math.round(scrape.pct)}%</b> : <button className="ap-x" onClick={() => setScrape((s) => ({ ...s, phase: "" }))}>×</button>}
+          </div>
+          {scrape.running && <div className="ap-track"><div className="ap-fill" style={{ width: `${scrape.pct}%` }} /></div>}
         </div>
       )}
       {auditToast && (
@@ -1918,6 +2021,7 @@ export default function App() {
         <AccountPage user={user} snapshot={snapshot} program={program}
           settings={settings} setSettings={setSettings} syncing={syncing}
           onForceRefresh={forceRefresh}
+          catalogInfo={catalogInfo} scrape={scrape} startScrape={startScrape}
           onSignOut={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); setShowAccount(false); }}
           onClose={() => setShowAccount(false)} />
       )}

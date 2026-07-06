@@ -74,6 +74,11 @@ export async function getPrograms() {
   try { const r = await fetch(`${API_BASE}/api/programs`); return r.ok ? r.json() : null; } catch { return null; }
 }
 
+// Full course catalog scraped from MyPlan by the extension: { courses, updatedAt, count }
+export async function getCourseCatalog() {
+  try { const r = await fetch(`${API_BASE}/api/courses-catalog`); return r.ok ? r.json() : null; } catch { return null; }
+}
+
 // ---- MyPlan handoff (bookmarklet import) ----
 export async function startImport(token) {
   const r = await fetch(`${API_BASE}/api/import/start`, { method: "POST", headers: authHeaders(token) });

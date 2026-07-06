@@ -40,8 +40,6 @@ export function computeRemaining(major, completedSet, ipSet, chosenSet) {
 // Rank the courses that count toward `area`, given the full remaining map so we
 // can reward breadth of coverage across everything still needed.
 export function recommend({ area, remainingMap, taken, planned, satisfied }) {
-  const remThis = remainingMap[area]?.remaining ?? 0;
-  const isCredits = (remainingMap[area]?.kind ?? "credits") === "credits";
   const pool = poolForArea(area).filter((c) => !taken.has(c.id));
 
   return pool
@@ -49,34 +47,39 @@ export function recommend({ area, remainingMap, taken, planned, satisfied }) {
       let score = 0;
       const reasons = [];
 
-      // 1) breadth — how many *other still-needed* requirements this also covers
-      const othersNeeded = areasOf(c).filter((g) => g !== area && (remainingMap[g]?.remaining ?? 0) > 0);
-      const totalCovered = othersNeeded.length + 1;
-      if (othersNeeded.length) {
-        score += 30 + 30 * othersNeeded.length; // strong, super-linear preference for breadth
-        reasons.push(`Covers ${totalCovered} requirements at once — also ${othersNeeded.map((o) => AREA_LABEL[o] || o).join(" + ")}`);
+      // PRIMARY: how much of what you STILL NEED this course actually covers.
+      // Areas you've already satisfied contribute nothing — so a course covering
+      // two areas you need beats one covering three areas where two are done.
+      let needValue = 0; const coveredNeeded = [];
+      for (const g of areasOf(c)) {
+        const rem = remainingMap[g];
+        if (rem && rem.remaining > 0) {
+          coveredNeeded.push(g);
+          needValue += rem.kind === "credits" ? Math.min(c.credits, rem.remaining) : 4; // credits it knocks down (or ~4 for a course req)
+        }
+      }
+      score += needValue * 4;
+      if (coveredNeeded.length > 1) {
+        score += 12 * (coveredNeeded.length - 1); // modest breadth bonus among NEEDED areas only
+        reasons.push(`Covers ${coveredNeeded.length} things you still need — ${coveredNeeded.map((o) => AREA_LABEL[o] || o).join(" + ")}`);
+      } else if (coveredNeeded.length === 1) {
+        reasons.push(`Counts toward ${AREA_LABEL[coveredNeeded[0]] || coveredNeeded[0]}`);
+      } else {
+        reasons.push("Doesn't fill anything you still need (would double-count / elective)");
       }
 
-      // 2) credit fit to what's left in this area
-      if (isCredits && remThis > 0) {
-        if (c.credits === remThis) { score += 40; reasons.push(`Exactly fills your remaining ${remThis} cr`); }
-        else if (c.credits < remThis) { score += 26 - (remThis - c.credits); reasons.push(`${c.credits} cr toward ${remThis} cr left`); }
-        else { score += 14 - (c.credits - remThis) * 2; reasons.push(`${c.credits} cr — over the ${remThis} cr left`); }
-      } else { score += 6; }
+      // degree relevance (minor tiebreaker)
+      if (c.csRelevant && coveredNeeded.length) { score += 6; reasons.push(c.relevanceNote || "Relevant to your major"); }
 
-      // 3) degree relevance
-      if (c.csRelevant) { score += 18; reasons.push(c.relevanceNote || "Relevant to your major"); }
-
-      // 4) prerequisite readiness
+      // prerequisite readiness
       const prereqs = c.prereqs || [];
-      if (!prereqs.length) score += 3;
-      else if (prereqs.every((p) => !COURSES[p] || satisfied?.has(p))) { score += 2; reasons.push("Prerequisites met"); }
+      if (!prereqs.length) score += 2;
+      else if (prereqs.every((p) => !COURSES[p] || satisfied?.has(p))) { score += 1; reasons.push("Prerequisites met"); }
       else { score -= 8; reasons.push("Has unmet prerequisites"); }
 
-      // 5) de-prioritize what's already planned
-      if (planned?.has(c.id)) { score -= 40; reasons.unshift("Already in your plan"); }
+      if (planned?.has(c.id)) { score -= 100; reasons.unshift("Already in your plan"); }
 
-      return { id: c.id, score, reasons, covers: totalCovered, planned: !!planned?.has(c.id) };
+      return { id: c.id, score, reasons, covers: Math.max(1, coveredNeeded.length), planned: !!planned?.has(c.id) };
     })
     .sort((a, b) => b.score - a.score);
 }

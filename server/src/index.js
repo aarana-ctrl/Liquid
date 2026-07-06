@@ -126,6 +126,47 @@ app.post("/api/programs", cors({ origin: true }), auth, async (req, res) => {
   res.json({ ok: true, majors: majors.length, minors: minors.length });
 });
 
+// ---- Full course catalog (scraped from MyPlan by the extension) ------------
+// Firestore caps a document at ~1MB, and the full UW-Seattle catalog is many
+// thousands of courses, so store it in numbered chunks with a small meta doc
+// and reassemble on read. Records are kept tiny: { i:id, t:title, c:credits,
+// g:[gen-ed buckets], l:level }.
+const COURSECAT_META = "coursecat_meta";
+const courseChunkKey = (n) => `coursecat_${n}`;
+app.get("/api/courses-catalog", cors({ origin: true }), async (req, res) => {
+  try {
+    const meta = await getSnapshot(COURSECAT_META);
+    if (!meta || !meta.chunks) return res.json({ courses: [], updatedAt: null });
+    let courses = [];
+    for (let i = 0; i < meta.chunks; i++) {
+      const c = await getSnapshot(courseChunkKey(i));
+      if (c?.courses) courses = courses.concat(c.courses);
+    }
+    res.json({ courses, updatedAt: meta.updatedAt || null, count: courses.length });
+  } catch (e) {
+    console.error("courses-catalog GET failed:", e.message);
+    res.json({ courses: [], updatedAt: null }); // never break the app
+  }
+});
+app.options("/api/courses-catalog", cors({ origin: true }));
+// The extension streams the catalog one chunk at a time, then finalizes with
+// { done:true, chunks:N }. Each chunk is stored under its own key.
+app.post("/api/courses-catalog", cors({ origin: true }), auth, async (req, res) => {
+  try {
+    const { chunk, courses, done, chunks } = req.body || {};
+    if (done) {
+      await saveSnapshot(COURSECAT_META, { chunks: Math.max(0, +chunks || 0), updatedAt: new Date().toISOString() });
+      return res.json({ ok: true, finalized: true, chunks: +chunks || 0 });
+    }
+    if (typeof chunk !== "number" || !Array.isArray(courses)) return res.status(400).json({ error: "chunk number + courses array required" });
+    await saveSnapshot(courseChunkKey(chunk), { courses: courses.slice(0, 1200) });
+    res.json({ ok: true, chunk, n: courses.length });
+  } catch (e) {
+    console.error("courses-catalog POST failed:", e.message);
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
 // ---- Auto-audit queue ------------------------------------------------------
 // The web app enqueues programs it wants exact DARS data for; the extension
 // reads this queue while the student is on MyPlan, runs "Audit a different

@@ -485,6 +485,30 @@ export function registerMajor(id, name) {
   MAJOR_CATALOG.push({ id, name: name || id, school: "UW-Seattle", dynamic: true });
 }
 
+// Merge the full course catalog scraped from MyPlan into COURSES. Records are
+// tiny ({ i:id, t:title, c:credits, g:[gen-ed buckets], l:level }). Curated
+// courses (with prereqs / csRelevant) are never overwritten. Returns count added.
+export function registerCourses(list) {
+  let added = 0;
+  for (const c of list || []) {
+    const id = String(c.i || c.id || "").replace(/\s+/g, "").toUpperCase();
+    if (!id || COURSES[id]) continue; // keep hand-authored definitions
+    const gened = Array.isArray(c.g) ? c.g.filter((x) => ["arts", "social", "science", "diversity", "writing"].includes(x)) : [];
+    COURSES[id] = {
+      id,
+      title: c.t || c.title || id,
+      credits: (+c.c || +c.credits || 0) || 0,
+      category: gened[0] || "elective",
+      prereqs: [],
+      ...(gened.length ? { gened } : {}),
+      level: (+c.l || 0) || undefined,
+      scraped: true,
+    };
+    added++;
+  }
+  return added;
+}
+
 // Merge the full DARS program list into the catalog (idempotent, dedup by name).
 export function mergeCatalog({ majors = [], minors = [] } = {}) {
   const haveMajor = new Set(MAJOR_CATALOG.map((m) => _normName(m.name)));
