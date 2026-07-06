@@ -101,15 +101,28 @@
       || null;
   }
 
+  // Detect the UW WebLogin page (expired session) — the audit can't run there.
+  function looksLikeLogin() {
+    const t = document.body.innerText || "";
+    return /Sign in to start using UW MyPlan|WEBLOGIN|Already have a UW NetID/i.test(t) &&
+      !/Audit a UW Degree Program|BACHELOR OF|MINOR IN|MINOR \(/i.test(t);
+  }
+  // The program the audit is currently showing (normalized), or null while loading.
+  function renderedProgram() {
+    const t = document.body.innerText || "";
+    const m = t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i) || t.match(/MINOR (?:IN\s+|\()([A-Z][A-Za-z &]+?)[)\n]/i);
+    return m ? norm(m[1]) : null;
+  }
+
+  // Returns true (audited+imported), false (couldn't), or "login" (session expired).
   async function driveNewAudit(name, level) {
-    if (!(await openPicker())) return false;
+    if (looksLikeLogin()) return "login";
+    if (!(await openPicker())) return looksLikeLogin() ? "login" : false;
     const type = document.querySelector("#degreeTypeSelector");
-    if (!type) return false;
-    // Major vs minor determines which programs #programSelector lists.
+    if (!type) return looksLikeLogin() ? "login" : false;
     const wantMinor = level === "minor";
     const typeOpt = [...type.options].find((o) => wantMinor ? /minor/i.test(o.textContent) : /major/i.test(o.textContent));
     if (typeOpt && type.value !== typeOpt.value) { setNativeSelect(type, typeOpt.value); await sleep(1200); }
-    // Program list re-renders after the type change — re-query it.
     const prog = document.querySelector("#programSelector");
     if (!prog) return false;
     const opt = matchOption(prog, name);
@@ -120,12 +133,17 @@
       .find((b) => /audit your degree/i.test(b.textContent || b.value || ""));
     if (!run) return false;
     run.click();
-    // Wait for the audit for this program to render; the observer then imports it.
-    const key = norm(name).split(" ")[0];
-    for (let i = 0; i < 24; i++) { await sleep(1200); if (norm(document.body.innerText).includes(key)) break; }
-    await sleep(2500);
-    doImport(false);
-    return true;
+    // The audit generates asynchronously (~10–25s, spinner shows meanwhile). Wait
+    // until the rendered program MATCHES the one we asked for, then import. Never
+    // import on timeout — that would capture the previously-shown program.
+    const want = norm(name);
+    for (let i = 0; i < 45; i++) {
+      await sleep(1500);
+      if (looksLikeLogin()) return "login";
+      const rp = renderedProgram();
+      if (rp && (rp.includes(want) || want.includes(rp))) { await sleep(1500); doImport(false); return true; }
+    }
+    return false; // timed out without the right audit rendering — don't import wrong data
   }
 
   // Scrape the FULL major + minor program lists from the picker (non-destructive
@@ -177,10 +195,15 @@
       const q = await getQueue();
       if (!q.length) break;
       const item = q[0];
-      let ok = false;
-      try { ok = await driveNewAudit(item.name, item.level); } catch (e) { /* fail-safe */ }
+      let res = false;
+      try { res = await driveNewAudit(item.name, item.level); } catch (e) { /* fail-safe */ }
+      if (res === "login") {
+        // Expired UW session — KEEP the item queued so it finishes after re-login.
+        toast("Your UW MyPlan sign-in expired. Sign into MyPlan, then it finishes automatically.", false);
+        break;
+      }
       chrome.runtime.sendMessage({ type: "lp-queue-done", name: item.name });
-      toast(ok ? ("✓ " + item.name + " audited & synced.") : ("Couldn't auto-run “" + item.name + "” — try again."), ok);
+      toast(res ? ("✓ " + item.name + " audited & synced.") : ("Couldn't auto-run “" + item.name + "” — try again."), !!res);
       await sleep(2000);
     }
     queueRunning = false;

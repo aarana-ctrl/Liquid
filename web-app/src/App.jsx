@@ -1458,12 +1458,20 @@ export default function App() {
     const prevFetched = snapshot?.fetchedAt;
     if (auditPollRef.current) clearInterval(auditPollRef.current);
     auditPollRef.current = setInterval(async () => {
-      if (Date.now() - startAt > 150000) { clearInterval(auditPollRef.current); return; }
+      // Nothing came back in time — almost always an expired UW MyPlan session.
+      // Tell the user to re-login instead of silently doing nothing.
+      if (Date.now() - startAt > 85000) {
+        clearInterval(auditPollRef.current);
+        setAuditNeedsLogin(true);
+        setAuditToast("MyPlan didn't respond — your UW sign-in may have expired. Open MyPlan, sign in, then try again.");
+        return;
+      }
       try {
         const snap = await getSnapshot(token);
         if (snap && snap.fetchedAt && snap.fetchedAt !== prevFetched) {
           replaceFromSnapshot(snap);
           clearInterval(auditPollRef.current);
+          setAuditNeedsLogin(false);
           setAuditToast("✓ DARS refresh complete — your numbers are now exact.");
           setTimeout(() => setAuditToast(""), 7000);
         }
@@ -1522,6 +1530,7 @@ export default function App() {
   // Explicit "Auto-run DARS": queue one or many programs AND open MyPlan's DARS
   // page so the extension processes the queue right away. Returns a status.
   const [auditToast, setAuditToast] = useState("");
+  const [auditNeedsLogin, setAuditNeedsLogin] = useState(false);
   const runAuditNow = async (items) => {
     const list = (Array.isArray(items) ? items : [items]).filter((b) => b?.name && !findAudit(b.name, snapshot?.programs, b.level));
     if (!token) { setAuditToast("Sign in first to auto-run DARS."); return; }
@@ -1561,7 +1570,15 @@ export default function App() {
   return (
     <>
       <Sky />
-      {auditToast && <div className="audit-toast island">{auditToast}</div>}
+      {auditToast && (
+        <div className="audit-toast island">
+          <span>{auditToast}</span>
+          {auditNeedsLogin && (
+            <button className="audit-toast-btn" onClick={() => { window.open("https://myplan.uw.edu/audit/#/degree", "_blank"); setAuditToast(""); setAuditNeedsLogin(false); }}>Open MyPlan to sign in ↗</button>
+          )}
+          <button className="audit-toast-x" onClick={() => { setAuditToast(""); setAuditNeedsLogin(false); }}>×</button>
+        </div>
+      )}
       <div className="dock-hotzone" aria-hidden />
       <div className={`dock island ${showDesign || showAccount || showDetail ? "tucked" : ""}`}>
         <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setView("plan"); }} title="Home">{I.home}</button>

@@ -86,6 +86,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const tab = await chrome.tabs.create({ url: "https://myplan.uw.edu/audit/#/degree", active: false });
         bgAuditTabId = tab.id;
         bgCloseTimer = setTimeout(closeBgTab, 300000); // safety net: close after 5 min
+        // If the UW session is expired, the audit URL redirects to WebLogin — the
+        // audit can't run, so close the tab early (the app surfaces a re-login prompt).
+        setTimeout(async () => {
+          try { const t = bgAuditTabId != null ? await chrome.tabs.get(bgAuditTabId) : null;
+            if (t && t.url && !/myplan\.uw\.edu\/audit/i.test(t.url)) closeBgTab();
+          } catch { /* */ }
+        }, 9000);
         sendResponse({ ok: true, opened: true });
       } catch (e) { sendResponse({ ok: false, error: String(e.message || e) }); }
     })();
