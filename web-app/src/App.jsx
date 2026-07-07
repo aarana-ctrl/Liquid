@@ -509,7 +509,7 @@ function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing, 
 // ---- Detailed DARS audit — full breakdown in the glass theme ----------------
 // Top-level/degree-wide lines that aren't actionable "unmet requirements".
 const SKIP_UNMET = /University requires|minimum of \d+ academic|matriculated University|in residence|Minimum (cumulative|graded) GPA|Total credits/i;
-function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms, onClose }) {
+function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms, onClose, covered }) {
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
@@ -532,7 +532,7 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
     const ax = x === "PRE" ? -1 : (parseQ(x) ?? -1), ay = y === "PRE" ? -1 : (parseQ(y) ?? -1); return ay - ax;
   });
   return (
-    <div className="account-page detail-audit">
+    <div className={`account-page detail-audit ${covered ? "app-under" : ""}`}>
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -715,7 +715,7 @@ function CourseRow({ id, reasons, chosen, onAdd, onRemove }) {
 }
 
 const FILTER_AREAS = [["", "All areas"], ["arts", "Arts & Humanities"], ["social", "Social Sciences"], ["science", "Natural Sciences"], ["diversity", "Diversity"], ["writing", "Writing (W)"]];
-function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen, removeChosen, onClose }) {
+function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen, removeChosen, onClose, covered }) {
   const [tab, setTab] = useState("rec");
   const [q, setQ] = useState("");
   const [creds, setCreds] = useState([]);   // selected credit values (OR)
@@ -747,7 +747,7 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
   const hasFilters = areas.length || creds.length || q;
 
   return (
-    <div className="account-page picker-page">
+    <div className={`account-page picker-page ${covered ? "app-under" : ""}`}>
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -1136,6 +1136,7 @@ function CourseDetailsPage({ courseId, onClose }) {
   const fmtId = courseId.replace(/([A-Z])(\d)/, "$1 $2");
   const subj = fmtId.split(/\s+/)[0];
   const title = data?.title || local?.title || fmtId;
+  const term = data?.term && !String(data.term).includes("undefined") ? data.term : ""; // guard stale data
   const distro = (data?.gpaDistro || []).filter((g) => g && g.gpa != null);
   const totalN = distro.reduce((s, g) => s + (g.count || 0), 0);
   // DawgPath's gpa field is on a 0–40 scale (GPA × 10), so divide by 10.
@@ -1178,7 +1179,7 @@ function CourseDetailsPage({ courseId, onClose }) {
                   {data.offered && <div><span>Offered</span><b>{offeredLabel(data.offered)}</b></div>}
                   {data.prereq && <div><span>Prereqs</span><b>{data.prereq}</b></div>}
                 </div>
-                <h3 className="set-h" style={{ marginTop: 20 }}>Professors{data.term ? ` · ${data.term}` : ""}</h3>
+                <h3 className="set-h" style={{ marginTop: 20 }}>Professors{term ? ` · ${term}` : ""}</h3>
                 {data.professors && data.professors.length ? (
                   <div className="cd-profs">
                     {data.professors.map((p) => {
@@ -1202,7 +1203,7 @@ function CourseDetailsPage({ courseId, onClose }) {
                   </div>
                 ) : (
                   <>
-                    <p className="cd-desc">No upcoming sections with listed instructors{data.term ? ` for ${data.term}` : ""}. Instructors vary by quarter.</p>
+                    <p className="cd-desc">No upcoming sections with listed instructors{term ? ` for ${term}` : ""}. Instructors vary by quarter.</p>
                     <a className="cd-rmp" href={rmp + encodeURIComponent(subj)} target="_blank" rel="noreferrer">★ Search {subj} professors on RateMyProfessors ↗</a>
                   </>
                 )}
@@ -1312,7 +1313,7 @@ const WIDGET_DEFS = [
 export const DEFAULT_SETTINGS = { theme: "tahoe", blur: 15, dim: 10, defaultView: "plan", liveOff: [], widgets: { audit: true, quarter: true, accountCard: true, clock: true } };
 
 // Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
-function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape }) {
+function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape, covered }) {
   const [tab, setTab] = useState("account");
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -1324,7 +1325,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
   const w = settings.widgets || {};
   const isDev = DEV_EMAILS.includes((user?.email || "").toLowerCase());
   return (
-    <div className="account-page">
+    <div className={`account-page ${covered ? "app-under" : ""}`}>
       <div className="ds-inner">
         <div className="ds-topbar">
           <div><div className="ds-eyebrow">Account &amp; Settings</div><h2>{user.name || "Your account"}</h2><p>{user.email}</p></div>
@@ -1445,7 +1446,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
 
 // ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
 function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose,
-  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow, onOpenDetail }) {
+  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow, onOpenDetail, covered }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
@@ -1466,7 +1467,7 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
       : `${program.name} · add courses across your quarters — ${totalRemaining} gen-ed cr left`;
 
   return (
-    <div className="design-studio">
+    <div className={`design-studio ${covered ? "app-under" : ""}`}>
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -2104,6 +2105,14 @@ export default function App() {
   // When any full-screen overlay is open, the home layer is hidden so the single
   // persistent background (root <Sky/>) shows through it seamlessly.
   const anyOverlay = showDesign || showAccount || showDetail || courseDetailId || detailReq || showHandoff;
+  // Overlays are transparent (so the shared background shows through), so only the
+  // TOP overlay may be visible — otherwise a lower one (e.g. the picker under Course
+  // Details) bleeds through. Priority, top → bottom: course > detail > picker >
+  // account > design. A covered overlay is hidden but stays mounted (keeps state).
+  const covDetail = !!courseDetailId;
+  const covPicker = !!courseDetailId || showDetail;
+  const covAccount = !!courseDetailId || showDetail || !!detailReq;
+  const covDesign = !!courseDetailId || showDetail || !!detailReq || showAccount;
 
   return (
     <>
@@ -2182,7 +2191,7 @@ export default function App() {
 
       {detailReq && (
         <CategoryDetail req={detailReq} major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
-          addChosen={addChosen} removeChosen={removeChosen} onClose={() => setDetailReq(null)} />
+          addChosen={addChosen} removeChosen={removeChosen} covered={covPicker} onClose={() => setDetailReq(null)} />
       )}
       {showHandoff && (
         <HandoffModal token={token}
@@ -2201,7 +2210,7 @@ export default function App() {
           onToggleMinor={(id) => { setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (MINORS[id]) requestAudit({ id, level: "minor", name: MINORS[id].name }); }}
           programs={snapshot?.programs}
           bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit} runAuditNow={runAuditNow}
-          onOpenDetail={openDetail}
+          onOpenDetail={openDetail} covered={covDesign}
           onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
       )}
       {courseDetailId && (
@@ -2209,12 +2218,12 @@ export default function App() {
       )}
       {showDetail && (
         <DetailedAuditPage snapshot={detailSource || snapshot} program={program} completedSet={completedSet} ipSet={ipSet}
-          courseTerms={courseTerms} onClose={() => setShowDetail(false)} />
+          courseTerms={courseTerms} covered={covDetail} onClose={() => setShowDetail(false)} />
       )}
       {showAccount && (
         <AccountPage user={user} snapshot={snapshot} program={program}
           settings={settings} setSettings={setSettings} syncing={syncing}
-          onForceRefresh={forceRefresh}
+          onForceRefresh={forceRefresh} covered={covAccount}
           catalogInfo={catalogInfo} scrape={scrape} startScrape={startScrape}
           onSignOut={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); setShowAccount(false); }}
           onClose={() => setShowAccount(false)} />
