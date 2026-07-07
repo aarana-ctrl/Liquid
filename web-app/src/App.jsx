@@ -701,15 +701,17 @@ function CourseRow({ id, reasons, chosen, onAdd, onRemove }) {
       <div className="cd-c-main">
         <div className="cd-c-head">
           <b>{id.replace(/(\d)/, " $1")}</b><span className="cd-cr">{c.credits} cr</span>
-          {(c.gened || [c.category]).map((g) => <span key={g} className="gbadge" style={{ borderColor: CAT_VAR[g] || "var(--glass-brd)" }}>{SHORT_AREA[g] || g}</span>)}
+          {(c.gened || [c.category]).map((g) => <span key={g} className="gbadge" style={{ borderColor: CAT_VAR[g] || "var(--glass-brd)", color: CAT_VAR[g] || "var(--text-dim)" }}>{SHORT_AREA[g] || g}</span>)}
         </div>
         <div className="cd-c-ttl">{c.title}</div>
         {reasons && reasons.length > 0 && <div className="cd-reasons">{reasons.slice(0, 3).map((r, i) => <span key={i} className="rchip">{r}</span>)}</div>}
-        <button className="cd-course-details" onClick={() => window.dispatchEvent(new CustomEvent("lp-open-course", { detail: id.replace(/([A-Z])(\d)/, "$1 $2") }))}>◧ Grades &amp; professors →</button>
       </div>
-      {chosen
-        ? <button className="cd-add added" onClick={onRemove}>✓ Added</button>
-        : <button className="cd-add" onClick={onAdd}>＋ Add</button>}
+      <div className="cd-actions">
+        <button className="cd-course-details" onClick={() => window.dispatchEvent(new CustomEvent("lp-open-course", { detail: id.replace(/([A-Z])(\d)/, "$1 $2") }))}>◧ Grades &amp; professors</button>
+        {chosen
+          ? <button className="cd-add added" onClick={onRemove}>✓ Added</button>
+          : <button className="cd-add" onClick={onAdd}>＋ Add</button>}
+      </div>
     </div>
   );
 }
@@ -1462,7 +1464,7 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
 
 // ---- Design Studio: full-screen planner (drag/drop, grid, add) -------------
 function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, addChosen, removeChosen, onAutoPlan, onClose,
-  mode, setMode, majorId, minorIds, onMajor, onToggleMinor, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow, onOpenDetail, covered }) {
+  mode, setMode, majorId, minorIds, onSetProgram, programs, bookmarks, toggleBookmark, requestAudit, runAuditNow, onOpenDetail, covered }) {
   const taken = useMemo(() => new Set([...completedSet, ...ipSet]), [completedSet, ipSet]);
   const remainingMap = useMemo(() => computeRemaining(program, completedSet, ipSet, chosenSet), [program, completedSet, ipSet, chosenSet]);
   const openReqs = program.requirements.filter((r) => (r.kind === "credits" || r.kind === "choose") && (remainingMap[r.area]?.remaining > 0));
@@ -1549,7 +1551,7 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
         )}
 
         {mode === "programs" && (
-          <ProgramsPanel majorId={majorId} minorIds={minorIds} onMajor={onMajor} onToggleMinor={onToggleMinor}
+          <ProgramsPanel majorId={majorId} minorIds={minorIds} onSetProgram={onSetProgram}
             programs={programs} onCompare={() => setMode("compare")} bookmarks={bookmarks} toggleBookmark={toggleBookmark} />
         )}
 
@@ -1576,8 +1578,16 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
 
 // Readable major/minor selection, embedded in the Design Studio. Two clear
 // columns (major radios + minor checkboxes) with search and live counts.
-function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, onCompare, bookmarks, toggleBookmark }) {
+function ProgramsPanel({ majorId, minorIds, onSetProgram, programs, onCompare, bookmarks, toggleBookmark }) {
   const [q, setQ] = useState("");
+  // Selections here are STAGED — they don't change your declared program until you
+  // press "Set as my program", so browsing majors never overwrites what you're pursuing.
+  const [pendMajor, setPendMajor] = useState(majorId);
+  const [pendMinors, setPendMinors] = useState(minorIds);
+  useEffect(() => { setPendMajor(majorId); }, [majorId]);
+  useEffect(() => { setPendMinors(minorIds); }, [minorIds]);
+  const dirty = pendMajor !== majorId || pendMinors.length !== minorIds.length || pendMinors.some((m) => !minorIds.includes(m));
+  const toggleMinor = (id) => setPendMinors((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
   const needle = q.trim().toLowerCase();
   const majors = MAJOR_CATALOG.filter((m) => !needle || m.name.toLowerCase().includes(needle) || (m.school || "").toLowerCase().includes(needle));
   const minors = Object.values(MINORS).filter((m) => !needle || m.name.toLowerCase().includes(needle));
@@ -1595,12 +1605,12 @@ function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, on
       </div>
       <div className="dp-cols">
         <section className="dp-col island">
-          <div className="dp-col-h">Major <span className="mm-count">{majors.length}</span><span className="dp-note">☆ bookmark to track</span></div>
+          <div className="dp-col-h">Major <span className="mm-count">{majors.length}</span><span className="dp-note">browse freely — nothing changes until you confirm</span></div>
           <div className="dp-scroll">
             {majors.map((m) => (
-              <label key={m.id} className={`dp-row ${majorId === m.id ? "sel" : ""}`}>
-                <input type="radio" name="ds-major" checked={majorId === m.id} onChange={() => onMajor(m.id)} />
-                <div className="dp-info"><b>{m.name}</b><span>{m.school}{audited(m.name, "major") ? " · ✓ audited" : ""}</span></div>
+              <label key={m.id} className={`dp-row ${pendMajor === m.id ? "sel" : ""}`}>
+                <input type="radio" name="ds-major" checked={pendMajor === m.id} onChange={() => setPendMajor(m.id)} />
+                <div className="dp-info"><b>{m.name}{majorId === m.id ? <span className="dp-yours">✓ your major</span> : ""}</b><span>{m.school}{audited(m.name, "major") ? " · ✓ audited" : ""}</span></div>
                 {star(m, "major")}
               </label>
             ))}
@@ -1610,15 +1620,24 @@ function ProgramsPanel({ majorId, minorIds, onMajor, onToggleMinor, programs, on
           <div className="dp-col-h">Minors <span className="mm-count">{minors.length}</span><span className="dp-note">select any (double-count allowed)</span></div>
           <div className="dp-scroll">
             {minors.map((m) => (
-              <label key={m.id} className={`dp-row ${minorIds.includes(m.id) ? "sel" : ""}`}>
-                <input type="checkbox" checked={minorIds.includes(m.id)} onChange={() => onToggleMinor(m.id)} />
-                <div className="dp-info"><b>{m.name}</b><span>{audited(m.name, "minor") ? "✓ audited — exact from DARS" : (m.deltas && m.deltas.length ? m.deltas.map(describeDelta).join(" · ") : `${m.reqCredits || 30} cr · requirements from DARS`)}</span></div>
+              <label key={m.id} className={`dp-row ${pendMinors.includes(m.id) ? "sel" : ""}`}>
+                <input type="checkbox" checked={pendMinors.includes(m.id)} onChange={() => toggleMinor(m.id)} />
+                <div className="dp-info"><b>{m.name}{minorIds.includes(m.id) ? <span className="dp-yours">✓ yours</span> : ""}</b><span>{audited(m.name, "minor") ? "✓ audited — exact from DARS" : (m.deltas && m.deltas.length ? m.deltas.map(describeDelta).join(" · ") : `${m.reqCredits || 30} cr · requirements from DARS`)}</span></div>
                 {star(m, "minor")}
               </label>
             ))}
           </div>
         </section>
       </div>
+      {dirty && (
+        <div className="dp-commit island">
+          <div className="dp-commit-txt">Make <b>{(MAJOR_CATALOG.find((m) => m.id === pendMajor) || {}).name || pendMajor}</b>{pendMinors.length ? ` + ${pendMinors.length} minor${pendMinors.length > 1 ? "s" : ""}` : ""} your program?<span>This replaces your current plan and re-runs its DARS audit.</span></div>
+          <div className="dp-commit-btns">
+            <button className="dp-cancel" onClick={() => { setPendMajor(majorId); setPendMinors(minorIds); }}>Cancel</button>
+            <button className="dp-set" onClick={() => onSetProgram(pendMajor, pendMinors)}>★ Set as my program</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1781,30 +1800,57 @@ export default function App() {
     window.addEventListener("lp-open-course", h);
     return () => window.removeEventListener("lp-open-course", h);
   }, []);
-  // Browser Back closes the current overlay instead of leaving the app entirely.
-  const overlayRef = useRef({});
-  overlayRef.current = { courseDetailId, showDetail, showAccount, showDesign, detailReq };
-  const prevAnyOverlay = useRef(false);
-  useEffect(() => {
-    const onPop = () => {
-      const o = overlayRef.current;
-      const before = (o.courseDetailId ? 1 : 0) + (o.showDetail ? 1 : 0) + (o.showAccount ? 1 : 0) + (o.showDesign ? 1 : 0) + (o.detailReq ? 1 : 0);
-      if (o.courseDetailId) setCourseDetailId(null);
-      else if (o.detailReq) setDetailReq(null);
-      else if (o.showDetail) setShowDetail(false);
-      else if (o.showAccount) setShowAccount(false);
-      else if (o.showDesign) setShowDesign(false);
-      else return; // nothing open — allow the browser to navigate normally
-      if (before > 1) window.history.pushState({ lp: 1 }, ""); // keep trapping while overlays remain
-    };
+  // ---- URL-hash routing ----------------------------------------------------
+  // Every screen is its own history entry, so a page refresh restores the same
+  // screen and Back returns to the previous screen (not always Home). Only one
+  // screen is active at a time. Close/back controls call history.back().
+  const routeRef = useRef({});
+  routeRef.current = { view, showDesign, designMode, showAccount, showDetail, detailReq, courseDetailId };
+  const programRef = useRef(null);
+  const applyingRoute = useRef(false);
+  const lastRoute = useRef(null);
+  const encodeRoute = (s) => {
+    if (s.courseDetailId) return "course/" + encodeURIComponent(s.courseDetailId);
+    if (s.detailReq) return "add/" + encodeURIComponent(s.detailReq.area || s.detailReq.label || "courses");
+    if (s.showDetail) return "audit";
+    if (s.showAccount) return "account";
+    if (s.showDesign) return "design/" + (s.designMode || "plan");
+    return s.view === "catalog" ? "catalog" : "plan";
+  };
+  const applyRoute = (hash) => {
+    applyingRoute.current = true;
+    const h = decodeURIComponent(String(hash || "").replace(/^#\/?/, ""));
+    setCourseDetailId(null); setDetailReq(null); setShowDetail(false); setShowAccount(false); setShowDesign(false);
+    if (h.startsWith("course/")) setCourseDetailId(h.slice(7));
+    else if (h.startsWith("add/")) {
+      const key = h.slice(4);
+      const req = (programRef.current?.requirements || []).find((r) => (r.area || "") === key || (r.label || "") === key);
+      if (req) setDetailReq(req); else setView("catalog");
+    } else if (h === "audit") setShowDetail(true);
+    else if (h === "account") setShowAccount(true);
+    else if (h.startsWith("design")) { setShowDesign(true); setDesignMode(h.split("/")[1] || "plan"); }
+    else setView(h === "catalog" ? "catalog" : "plan");
+    setTimeout(() => { applyingRoute.current = false; }, 0);
+  };
+  useEffect(() => { // restore on first load (refresh keeps the page)
+    const h = window.location.hash;
+    if (h && h.length > 2) { applyRoute(h); lastRoute.current = decodeURIComponent(h.replace(/^#\/?/, "")); }
+  }, []); // eslint-disable-line
+  useEffect(() => { // push a history entry when the screen changes
+    if (applyingRoute.current) return;
+    const r = encodeRoute(routeRef.current);
+    if (r === lastRoute.current) return;
+    const first = lastRoute.current === null;
+    lastRoute.current = r;
+    const url = "#/" + r;
+    if (first) window.history.replaceState({ r }, "", url);
+    else window.history.pushState({ r }, "", url);
+  }, [view, showDesign, designMode, showAccount, showDetail, detailReq, courseDetailId]);
+  useEffect(() => { // Back / Forward restores the target screen
+    const onPop = () => { applyRoute(window.location.hash); lastRoute.current = decodeURIComponent(window.location.hash.replace(/^#\/?/, "")); };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
-  useEffect(() => {
-    const any = !!(courseDetailId || showDetail || showAccount || showDesign || detailReq);
-    if (any && !prevAnyOverlay.current) window.history.pushState({ lp: 1 }, "");
-    prevAnyOverlay.current = any;
-  }, [courseDetailId, showDetail, showAccount, showDesign, detailReq]);
   const [majorId, setMajorId] = useState("cs");
   const [minorIds, setMinorIds] = useState([]);
   const [bookmarks, setBookmarks] = useState([]); // [{ id, level:'major'|'minor', name }]
@@ -1838,6 +1884,7 @@ export default function App() {
     : [...p, { id: b.id, level: b.level, name: b.name, savedAt: Date.now() }]);
 
   const program = useMemo(() => buildProgram(resolveProgram(majorId), minorIds), [majorId, minorIds]);
+  programRef.current = program; // let route restore reconstruct the course picker
   const completedSet = useMemo(() => new Set(completed), [completed]);
   const ipSet = useMemo(() => new Set(inProgress), [inProgress]);
   const chosenSet = useMemo(() => new Set(chosen), [chosen]);
@@ -2235,7 +2282,7 @@ export default function App() {
 
       {detailReq && (
         <CategoryDetail req={detailReq} major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
-          addChosen={addChosen} removeChosen={removeChosen} covered={covPicker} onClose={() => setDetailReq(null)} />
+          addChosen={addChosen} removeChosen={removeChosen} covered={covPicker} onClose={() => window.history.back()} />
       )}
       {showHandoff && (
         <HandoffModal token={token}
@@ -2250,19 +2297,23 @@ export default function App() {
           addChosen={addChosen} removeChosen={removeChosen}
           mode={designMode} setMode={setDesignMode}
           majorId={majorId} minorIds={minorIds}
-          onMajor={(id) => { setMajorId(id); setChosen([]); setSchedule({}); requestAudit({ id, level: "major", name: (MAJOR_CATALOG.find((m) => m.id === id) || {}).name || id }); }}
-          onToggleMinor={(id) => { setMinorIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]); if (MINORS[id]) requestAudit({ id, level: "minor", name: MINORS[id].name }); }}
+          onSetProgram={(mId, mins) => {
+            setMajorId(mId); setMinorIds(mins); setChosen([]); setSchedule({});
+            const cur = MAJOR_CATALOG.find((m) => m.id === mId);
+            requestAudit({ id: mId, level: "major", name: cur?.name || mId });
+            (mins || []).forEach((id) => { if (MINORS[id]) requestAudit({ id, level: "minor", name: MINORS[id].name }); });
+          }}
           programs={snapshot?.programs}
           bookmarks={bookmarks} toggleBookmark={toggleBookmark} requestAudit={requestAudit} runAuditNow={runAuditNow}
           onOpenDetail={openDetail} covered={covDesign}
-          onAutoPlan={() => autoPlan()} onClose={() => setShowDesign(false)} />
+          onAutoPlan={() => autoPlan()} onClose={() => window.history.back()} />
       )}
       {courseDetailId && (
-        <CourseDetailsPage courseId={courseDetailId} onClose={() => setCourseDetailId(null)} />
+        <CourseDetailsPage courseId={courseDetailId} onClose={() => window.history.back()} />
       )}
       {showDetail && (
         <DetailedAuditPage snapshot={detailSource || snapshot} program={program} completedSet={completedSet} ipSet={ipSet}
-          courseTerms={courseTerms} covered={covDetail} onClose={() => setShowDetail(false)} />
+          courseTerms={courseTerms} covered={covDetail} onClose={() => window.history.back()} />
       )}
       {showAccount && (
         <AccountPage user={user} snapshot={snapshot} program={program}
@@ -2270,7 +2321,7 @@ export default function App() {
           onForceRefresh={forceRefresh} covered={covAccount}
           catalogInfo={catalogInfo} scrape={scrape} startScrape={startScrape}
           onSignOut={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); setShowAccount(false); }}
-          onClose={() => setShowAccount(false)} />
+          onClose={() => window.history.back()} />
       )}
     </>
   );

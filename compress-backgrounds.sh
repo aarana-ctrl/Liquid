@@ -11,13 +11,16 @@ set -e
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 T="$ROOT/Themes"
 O="$ROOT/web-app/public/themes"
-START=6; LEN=24; CRF=23   # clip start (s), length (s), quality (lower = better/bigger)
+START=6; LEN=14; CRF=23   # clip start (s), forward length (s), quality (lower = better/bigger)
 
+# Boomerang loop: forward clip + its reverse, so the last frame == the first frame
+# and the video loops seamlessly (no snap/blur when it restarts). Final length is
+# ~2×LEN. The reverse filter buffers frames in RAM — fine on a Mac; keep LEN modest.
 vid () { # src  out.mp4
-  mkdir -p "$(dirname "$2")"; echo "→ $2"
-  ffmpeg -y -hwaccel videotoolbox -ss "$START" -t "$LEN" -i "$1" \
-    -an -vf "scale=1920:-2,fps=24,format=yuv420p" \
-    -c:v libx264 -preset slow -crf "$CRF" -movflags +faststart "$2"
+  mkdir -p "$(dirname "$2")"; echo "→ $2 (seamless ping-pong)"
+  ffmpeg -y -hwaccel videotoolbox -ss "$START" -t "$LEN" -i "$1" -an \
+    -filter_complex "[0:v]scale=1920:-2,fps=24,format=yuv420p,split[a][b];[b]reverse[r];[a][r]concat=n=2:v=1[out]" \
+    -map "[out]" -c:v libx264 -preset slow -crf "$CRF" -movflags +faststart "$2"
 }
 img () { # src  out.jpg  [width=1920]
   mkdir -p "$(dirname "$2")"; echo "→ $2"
