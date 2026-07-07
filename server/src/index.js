@@ -189,7 +189,22 @@ const normName = (s) => {
     .replace(/\b(bachelor|science|arts|minor|major|of|the|in|degree|b\.?s\.?|b\.?a\.?)\b/g, " ")
     .replace(/[^a-z0-9]+/g, " ").trim();
 };
-const nameMatch = (a, b) => { const x = normName(a), y = normName(b); return !!x && !!y && (x.includes(y) || y.includes(x)); };
+// Acronym so abbreviated program names still match (e.g. ACMS ↔ Applied &
+// Computational Math Sciences), and "Math" vs "Mathematical" wording differences.
+const acronymName = (s) => String(s || "").toLowerCase()
+  .replace(/\([^)]*\)/g, " ")
+  .replace(/\b(bachelor|science|arts|minor|major|of|the|in|for|and|degree|bs|ba)\b/g, " ")
+  .split(/[^a-z0-9]+/).filter(Boolean).map((w) => w[0]).join("");
+const compactName = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const nameMatch = (a, b) => {
+  const x = normName(a), y = normName(b);
+  if (!!x && !!y && (x.includes(y) || y.includes(x))) return true;
+  const ax = acronymName(a), ay = acronymName(b), ca = compactName(a), cb = compactName(b);
+  if (ax.length >= 2 && ax === ay) return true;   // both multi-word, same acronym
+  if (ay.length >= 2 && ay === ca) return true;   // acronym(b) === compact(a) — a is abbreviated
+  if (ax.length >= 2 && ax === cb) return true;   // acronym(a) === compact(b) — b is abbreviated
+  return false;
+};
 app.get("/api/audit-queue", auth, async (req, res) => {
   const plan = (await getPlan(req.user.sub)) || {};
   res.json({ queue: plan.auditQueue || [] });

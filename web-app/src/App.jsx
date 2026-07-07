@@ -1998,12 +1998,14 @@ export default function App() {
     if (backendOnline) { try { const { token: tk, user: u } = await devLogin(profile); setUser(u); setToken(tk); return; } catch { /* local */ } }
     setUser(profile);
   }
-  // NetID sign-in pulls MyPlan automatically (no manual Re-sync needed).
+  // NetID sign-in pulls MyPlan automatically (no manual Re-sync needed). Wait for
+  // the saved snapshot to finish loading first — otherwise a page refresh would
+  // auto-sync before the persisted DARS arrives and wipe it out.
   useEffect(() => {
-    if (user?.provider === "netid" && !snapshot && !syncing && !didAutoSync.current) {
+    if (user?.provider === "netid" && loaded && !snapshot && !syncing && !didAutoSync.current) {
       didAutoSync.current = true; handleSync();
     }
-  }, [user, snapshot, syncing]); // eslint-disable-line
+  }, [user, loaded, snapshot, syncing]); // eslint-disable-line
   function applySnapshot(snap) {
     setSnapshot(snap);
     setCompleted((p) => [...new Set([...p, ...(snap.earned || [])])]);

@@ -156,15 +156,31 @@ export function compareFromAudit(meta, audit) {
 }
 
 // Find a captured audit that matches a catalog program by name keywords.
+// Acronym of a program name (first letter of each significant word), so an
+// audit stored/shown as "ACMS" matches "Applied & Computational Math Sciences",
+// and "Math" vs "Mathematical" wording differences don't break matching.
+function acronym(s) {
+  return String(s || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(bachelor|of|science|arts|minor|major|the|in|and|for|b\.?s\.?|b\.?a\.?)\b/gi, " ")
+    .split(/[^a-z0-9]+/i).filter(Boolean).map((w) => w[0]).join("").toLowerCase();
+}
+const compact = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 export function findAudit(name, programs, level) {
   if (!programs) return null;
   const core = String(name).replace(/\s*\([^)]*\)\s*$/, "").replace(/\b(B\.?S\.?|B\.?A\.?|minor|major)\b/gi, "").trim().toLowerCase();
   if (!core) return null;
+  const nameAcr = acronym(name);
   for (const key of Object.keys(programs)) {
     const p = programs[key];
     if (level && p.level && p.level !== level) continue;
-    const title = String(p.program || key).toLowerCase();
-    if (title.includes(core) || core.includes(title.replace(/^(bachelor of (science|arts)|minor)\s*\(?/, "").replace(/\)$/, "").trim())) return p;
+    const rawTitle = String(p.program || key);
+    const title = rawTitle.toLowerCase();
+    const stripped = title.replace(/^(bachelor of (science|arts)|minor)\s*\(?/, "").replace(/\)$/, "").trim();
+    if (title.includes(core) || core.includes(stripped)) return p;
+    // acronym / abbreviation match (e.g. ACMS ↔ Applied & Computational Math Sciences)
+    const titleAcr = acronym(rawTitle);
+    if (nameAcr && nameAcr.length >= 2 && (nameAcr === titleAcr || compact(stripped) === nameAcr || compact(rawTitle) === nameAcr)) return p;
   }
   return null;
 }

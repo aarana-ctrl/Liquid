@@ -117,11 +117,23 @@
     return !!document.querySelector("#programSelector");
   }
 
+  // Acronym of a program name (first letter of significant words) so a full name
+  // matches a picker option abbreviated in MyPlan (e.g. "Applied & Computational
+  // Math Sciences" ↔ "ACMS"), and vice versa.
+  const acr = (s) => String(s || "")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(bachelor|of|science|arts|minor|major|the|in|and|for|bs|ba)\b/gi, " ")
+    .split(/[^a-z0-9]+/i).filter(Boolean).map((w) => w[0]).join("").toLowerCase();
+  const compact = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   function matchOption(select, name) {
     const target = norm(name);
+    const nameAcr = acr(name);
     const opts = [...select.options].filter((o) => o.value && !/select a program/i.test(o.textContent));
     return opts.find((o) => norm(o.textContent) === target)
       || opts.find((o) => { const t = norm(o.textContent); return t && (t.includes(target) || target.includes(t)); })
+      // acronym / abbreviation match, both directions
+      || opts.find((o) => { const oa = acr(o.textContent), oc = compact(o.textContent);
+           return nameAcr.length >= 2 && (nameAcr === oa || oc === nameAcr || compact(name).length >= 2 && oa === compact(name)); })
       || null;
   }
 
