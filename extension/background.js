@@ -85,7 +85,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         const tab = await chrome.tabs.create({ url: "https://myplan.uw.edu/audit/#/degree", active: false });
         bgAuditTabId = tab.id;
-        bgCloseTimer = setTimeout(closeBgTab, 300000); // safety net: close after 5 min
+        bgCloseTimer = setTimeout(closeBgTab, 900000); // safety net: close after 15 min (several audits in a throttled background tab take a while)
         // If the UW session is expired, the audit URL redirects to WebLogin — the
         // audit can't run, so close the tab early (the app surfaces a re-login prompt).
         setTimeout(async () => {

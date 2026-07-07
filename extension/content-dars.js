@@ -96,13 +96,24 @@
     el.dispatchEvent(new Event("change", { bubbles: true }));
   }
 
+  function findPickerButton() {
+    return [...document.querySelectorAll("button, a, [role=button]")]
+      .find((e) => /choose (a )?different program|different program|change program|audit (a )?different|audit another|new audit|change your program|select (a )?program|different degree/i
+        .test((e.textContent || e.getAttribute("aria-label") || "").trim()));
+  }
   async function openPicker() {
     if (document.querySelector("#programSelector")) return true;
-    const btn = [...document.querySelectorAll("button, a")]
-      .find((e) => /choose different program|different program|change program/i.test(e.textContent || ""));
-    if (!btn) return false;
-    btn.click();
-    for (let i = 0; i < 12; i++) { await sleep(400); if (document.querySelector("#programSelector")) return true; }
+    // Reopening the picker is the failure point for the 2nd+ audit in a batch:
+    // after an audit renders, the selector is gone and the "different program"
+    // control may be worded differently. Try the button, and if that fails, reset
+    // the audit SPA back to the degree-selection route. Retry a few times.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (document.querySelector("#programSelector")) return true;
+      const btn = findPickerButton();
+      if (btn) { btn.click(); }
+      else if (/myplan\.uw\.edu\/audit/i.test(location.href)) { try { location.hash = "#/degree"; } catch (e) { /* */ } }
+      for (let i = 0; i < 16; i++) { await sleep(400); if (document.querySelector("#programSelector")) return true; }
+    }
     return !!document.querySelector("#programSelector");
   }
 
@@ -218,20 +229,31 @@
     // while we were running are also handled. Remove each item whether it
     // succeeds or fails, so the queue always empties and the tab can close.
     let guard = 0;
-    while (guard++ < 60) {
+    while (guard++ < 80) {
       const q = await getQueue();
       if (!q.length) break;
       const item = q[0];
+      // Try each program up to twice; the 2nd+ audit in a batch sometimes needs the
+      // picker re-opened from a fresh state (openPicker handles that).
       let res = false;
-      try { res = await driveNewAudit(item.name, item.level); } catch (e) { /* fail-safe */ }
+      for (let tryN = 0; tryN < 2 && res !== true; tryN++) {
+        if (tryN > 0) await sleep(1500);
+        try { res = await driveNewAudit(item.name, item.level); } catch (e) { res = false; }
+        if (res === "login") break;
+      }
       if (res === "login") {
-        // Expired UW session — KEEP the item queued so it finishes after re-login.
-        toast("Your UW MyPlan sign-in expired. Sign into MyPlan, then it finishes automatically.", false);
-        break;
+        // Only abort the whole batch if the session is REALLY gone — re-check after a
+        // moment so a transient loading state doesn't wrongly stop the remaining ones.
+        await sleep(2500);
+        if (looksLikeLogin()) {
+          toast("Your UW MyPlan sign-in expired. Sign into MyPlan, then it finishes automatically.", false);
+          break;
+        }
+        continue; // false alarm — retry this item on the next pass
       }
       chrome.runtime.sendMessage({ type: "lp-queue-done", name: item.name });
-      toast(res ? ("✓ " + item.name + " audited & synced.") : ("Couldn't auto-run “" + item.name + "” — try again."), !!res);
-      await sleep(2000);
+      toast(res ? ("✓ " + item.name + " audited & synced.") : ("Couldn't auto-run “" + item.name + "” — skipped."), !!res);
+      await sleep(2200);
     }
     queueRunning = false;
     chrome.runtime.sendMessage({ type: "lp-queue-processed" }); // queue drained → hidden tab closes
