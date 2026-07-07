@@ -121,8 +121,10 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .app.app-under, .toolbar.app-under { visibility: hidden; pointer-events: none; }
 .toprow { padding-left: 4px; }  /* greeting stretches near the left edge */
 
-/* ---- top row: greeting / orb / clock (full-width banner) ---- */
-.toprow { flex: 0 0 auto; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; margin-bottom: 12px; min-height: 72px; }
+/* ---- top row: greeting on the left, clock on the right ---- */
+.toprow { flex: 0 0 auto; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; min-height: 72px; }
+.toprow .greeting { flex: 1 1 auto; min-width: 0; }
+.clockwrap { flex: 0 0 auto; }
 .greeting h1 { font-size: 34px; }
 .greeting .eyebrow { margin-bottom: 5px; }
 .greeting p { margin-top: 6px; }

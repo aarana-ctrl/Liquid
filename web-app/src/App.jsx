@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useRef, useLayoutEffect } from "react";
 import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, parseTranscript, getDesc } from "./data.js";
 import { mockSignIn } from "./auth.js";
-import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms, getCourseCatalog } from "./api.js";
+import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms, getCourseCatalog, getAuditQueue } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram, mergeCatalog, registerMajor, registerCourses } from "./data.js";
 import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit } from "./recommend.js";
 import bgUrl from "./bg.jpg";
@@ -1965,20 +1965,28 @@ export default function App() {
   function startAuditPolling() {
     if (!token) return;
     const startAt = Date.now();
-    const prevFetched = snapshot?.fetchedAt;
+    let lastFetched = snapshot?.fetchedAt;
+    let lastCount = snapshot?.programs ? Object.keys(snapshot.programs).length : 0;
+    let gotUpdate = false;
     if (auditPollRef.current) clearInterval(auditPollRef.current);
+    const finishOk = () => {
+      clearInterval(auditPollRef.current);
+      setAuditNeedsLogin(false);
+      setAuditProgress(100);
+      setTimeout(() => { setAuditRunning(false); setAuditProgress(0); }, 1400);
+      setAuditToast("✓ DARS complete — your numbers are now exact.");
+      setTimeout(() => setAuditToast(""), 7000);
+    };
     auditPollRef.current = setInterval(async () => {
-      // Nothing came back in time. Instead of assuming the session expired, ask the
-      // extension whether the UW MyPlan session is actually alive, and tailor the
-      // message — so we never wrongly tell a signed-in user they're signed out.
-      if (Date.now() - startAt > 85000) {
+      // Timed out. Ask the extension whether the UW MyPlan session is actually
+      // alive so we never wrongly tell a signed-in user they're signed out.
+      if (Date.now() - startAt > 150000) {
         clearInterval(auditPollRef.current);
         setAuditRunning(false); setAuditProgress(0);
         const status = await checkMyPlanSession();
         if (status.ok) {
-          // Signed into MyPlan — the audit just didn't produce new numbers in time.
           setAuditNeedsLogin(false);
-          setAuditToast("You're signed into MyPlan, but the audit didn't return new numbers in time. If this program was already up to date, your numbers are current — otherwise make sure the Liquid extension is enabled and try Re-sync again.");
+          setAuditToast("You're signed into MyPlan, but the audit didn't return new numbers in time. If this program was already up to date, your numbers are current — otherwise make sure the Liquid extension is enabled and try again.");
         } else if (status.reason === "no-extension") {
           setAuditNeedsLogin(false);
           setAuditToast("The Liquid extension isn't responding. Enable it in Chrome (or reload the extension), then try again.");
@@ -1990,18 +1998,23 @@ export default function App() {
         return;
       }
       try {
+        // Live-update the snapshot every time it changes, so each program's card
+        // flips to ✓ exact the moment its audit lands (not just the first one).
         const snap = await getSnapshot(token);
-        if (snap && snap.fetchedAt && snap.fetchedAt !== prevFetched) {
-          replaceFromSnapshot(snap);
-          clearInterval(auditPollRef.current);
-          setAuditNeedsLogin(false);
-          setAuditProgress(100);
-          setTimeout(() => { setAuditRunning(false); setAuditProgress(0); }, 1400);
-          setAuditToast("✓ DARS refresh complete — your numbers are now exact.");
-          setTimeout(() => setAuditToast(""), 7000);
+        if (snap) {
+          const count = snap.programs ? Object.keys(snap.programs).length : 0;
+          if ((snap.fetchedAt && snap.fetchedAt !== lastFetched) || count !== lastCount) {
+            lastFetched = snap.fetchedAt; lastCount = count; gotUpdate = true;
+            replaceFromSnapshot(snap);
+            setAuditProgress((p) => Math.max(p, 65));
+          }
         }
+        // Done when the whole auto-audit queue has drained (every program imported).
+        const qr = await getAuditQueue(token);
+        const q = qr?.queue;
+        if (Array.isArray(q) && q.length === 0 && gotUpdate) finishOk();
       } catch { /* keep polling */ }
-    }, 6000);
+    }, 5000);
   }
   async function handleSyncLocal() {
     setSyncing(true);
