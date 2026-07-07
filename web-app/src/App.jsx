@@ -133,6 +133,10 @@ function themeBg(theme) {
   if (t.variants) { const h = new Date().getHours(); name = (h >= 6 && h < 18) ? "day" : "night"; }
   return { kind: t.kind, src: `/themes/${theme}/${name}.${ext}` };
 }
+// A SINGLE persistent Sky lives at the app root. Overlays are transparent, so the
+// same background sits behind every screen — no remount, no flash on navigation.
+// A still poster is always painted underneath, so switching theme (or a paused
+// "still" wallpaper) shows the right image instead of the previous one bleeding.
 function Sky() {
   const [, force] = useState(0);
   useEffect(() => {
@@ -141,13 +145,18 @@ function Sky() {
     const iv = setInterval(on, 10 * 60 * 1000); // re-check time-of-day every 10 min
     return () => { window.removeEventListener("lp-theme", on); clearInterval(iv); };
   }, []);
-  const theme = (typeof document !== "undefined" && document.documentElement.dataset.theme) || "tahoe";
+  const root = typeof document !== "undefined" ? document.documentElement : null;
+  const theme = (root && root.dataset.theme) || "tahoe";
+  const liveOff = ((root && root.dataset.liveOff) || "").split(",").filter(Boolean);
   const bg = themeBg(theme);
-  const photo = bg && bg.kind === "image" ? bg.src : bgUrl;
+  const isVideo = !!bg && bg.kind === "video";
+  const live = isVideo && !liveOff.includes(theme);
+  // base still: video themes use their poster; image themes use their own image
+  const baseImg = isVideo ? `/themes/${theme}/poster.jpg` : (bg ? bg.src : bgUrl);
   return (
     <>
-      <div className="bg-photo" style={{ backgroundImage: `url(${photo})` }} aria-hidden />
-      {bg && bg.kind === "video" && (
+      <div className="bg-photo" style={{ backgroundImage: `url(${baseImg})` }} aria-hidden />
+      {live && (
         <video key={bg.src} className="bg-video" autoPlay muted loop playsInline preload="auto" aria-hidden
           onError={(e) => { e.currentTarget.style.display = "none"; }}>
           <source src={bg.src} type="video/mp4" />
@@ -524,7 +533,6 @@ function DetailedAuditPage({ snapshot, program, completedSet, ipSet, courseTerms
   });
   return (
     <div className="account-page detail-audit">
-      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -740,7 +748,6 @@ function CategoryDetail({ req, major, completedSet, ipSet, chosenSet, addChosen,
 
   return (
     <div className="account-page picker-page">
-      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -1141,7 +1148,6 @@ function CourseDetailsPage({ courseId, onClose }) {
   const dawg = `https://dawgpath.uw.edu/course?id=${encodeURIComponent(fmtId)}&campus=seattle`;
   return (
     <div className="account-page course-detail">
-      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -1301,10 +1307,9 @@ const WIDGET_DEFS = [
   { key: "audit", label: "Degree Audit", desc: "Progress, credits and GPA card" },
   { key: "quarter", label: "This Quarter", desc: "Your currently-enrolled courses" },
   { key: "accountCard", label: "Account card", desc: "Name / email / sign-out on the home page" },
-  { key: "orb", label: "Assistant orb", desc: "The floating radial menu" },
   { key: "clock", label: "Clock", desc: "Time & location, top-right" },
 ];
-export const DEFAULT_SETTINGS = { theme: "tahoe", blur: 15, dim: 10, defaultView: "plan", widgets: { audit: true, quarter: true, accountCard: true, orb: true, clock: true } };
+export const DEFAULT_SETTINGS = { theme: "tahoe", blur: 15, dim: 10, defaultView: "plan", liveOff: [], widgets: { audit: true, quarter: true, accountCard: true, clock: true } };
 
 // Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
 function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape }) {
@@ -1320,7 +1325,6 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
   const isDev = DEV_EMAILS.includes((user?.email || "").toLowerCase());
   return (
     <div className="account-page">
-      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div><div className="ds-eyebrow">Account &amp; Settings</div><h2>{user.name || "Your account"}</h2><p>{user.email}</p></div>
@@ -1377,12 +1381,23 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
             <section className="island set-card">
               <h3 className="set-h">Theme</h3>
               <div className="set-themes">
-                {THEMES.map((t) => (
-                  <button key={t.id} className={`set-theme ${settings.theme === t.id ? "on" : ""}`} onClick={() => setS({ theme: t.id })}>
-                    <span className="set-swatch" style={{ backgroundImage: `linear-gradient(135deg, ${t.accent}55, ${t.accent2}55), url(/themes/${t.id}/thumb.jpg)` }} />
-                    <span>{t.name}</span>
-                  </button>
-                ))}
+                {THEMES.map((t) => {
+                  const isVideo = THEME_BG[t.id]?.kind === "video";
+                  const still = (settings.liveOff || []).includes(t.id);
+                  return (
+                    <div key={t.id} role="button" tabIndex={0} className={`set-theme ${settings.theme === t.id ? "on" : ""}`}
+                      onClick={() => setS({ theme: t.id })} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setS({ theme: t.id }); }}>
+                      <span className="set-swatch" style={{ backgroundImage: `linear-gradient(135deg, ${t.accent}55, ${t.accent2}55), url(/themes/${t.id}/thumb.jpg)` }} />
+                      <span className="set-theme-name">{t.name}</span>
+                      {isVideo && (
+                        <button className={`theme-live ${still ? "" : "on"}`} title={still ? "Currently a still image — tap to play the live video" : "Live video — tap to save memory with a still image"}
+                          onClick={(e) => { e.stopPropagation(); const off = new Set(settings.liveOff || []); still ? off.delete(t.id) : off.add(t.id); setS({ liveOff: [...off] }); }}>
+                          {still ? "▷ Still" : "● Live"}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </section>
             <section className="island set-card">
@@ -1452,7 +1467,6 @@ function DesignStudio({ boardProps, program, completedSet, ipSet, chosenSet, add
 
   return (
     <div className="design-studio">
-      <Sky />
       <div className="ds-inner">
         <div className="ds-topbar">
           <div>
@@ -1786,11 +1800,15 @@ export default function App() {
   useEffect(() => {
     const r = document.documentElement;
     const t = THEMES.find((x) => x.id === settings.theme) || THEMES[0];
+    const toRgb = (hex) => { const h = hex.replace("#", ""); return `${parseInt(h.slice(0, 2), 16)}, ${parseInt(h.slice(2, 4), 16)}, ${parseInt(h.slice(4, 6), 16)}`; };
     r.style.setProperty("--accent", t.accent);
     r.style.setProperty("--accent-2", t.accent2);
+    r.style.setProperty("--accent-rgb", toRgb(t.accent));   // for rgba() tints that follow the theme
+    r.style.setProperty("--accent2-rgb", toRgb(t.accent2));
     r.style.setProperty("--glass-blur", (settings.blur ?? 34) + "px");
     r.style.setProperty("--bg-dim", String((settings.dim ?? 50) / 100));
     r.dataset.theme = t.id; // Sky reads this to pick the matching background video
+    r.dataset.liveOff = (settings.liveOff || []).join(","); // themes paused to a still
     window.dispatchEvent(new Event("lp-theme"));
   }, [settings]);
   // Open to the user's chosen default view (once, on mount).
@@ -2083,15 +2101,9 @@ export default function App() {
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   const openDesign = (m = "plan") => { setDesignMode(m); setShowDesign(true); };
-  const dialItems = [
-    { key: "settings", label: "Settings", icon: I.gear, onClick: () => {} },
-    { key: "planview", label: "Plan View", icon: I.cal, onClick: () => setView("plan") },
-    { key: "catalog", label: "Catalog", icon: I.search, onClick: () => setView("catalog") },
-    { key: "majors", label: "Majors", icon: I.grad, onClick: () => openDesign("programs") },
-    { key: "compare", label: "Compare", icon: I.grad, onClick: () => openDesign("compare") },
-    { key: "add", label: "Add Class", icon: I.plus, onClick: () => setView("catalog") },
-    { key: "auto", label: "Auto Plan", icon: I.spark, onClick: autoPlan },
-  ];
+  // When any full-screen overlay is open, the home layer is hidden so the single
+  // persistent background (root <Sky/>) shows through it seamlessly.
+  const anyOverlay = showDesign || showAccount || showDetail || courseDetailId || detailReq || showHandoff;
 
   return (
     <>
@@ -2130,14 +2142,13 @@ export default function App() {
         <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowDetail(false); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
       </div>
 
-      <div className="app">
+      <div className={`app ${anyOverlay ? "app-under" : ""}`}>
         <div className="toprow">
           <div className="greeting">
             <div className="eyebrow">{snapshot?.catalogYear || "2026 – 2027"} Degree Plan</div>
             <h1>{greet}, {user.name?.split(" ")[0] || "Student"}</h1>
             <p>{mappedCredits} credits mapped across your plan · {prereqLinks} prerequisites linked.</p>
           </div>
-          {wid.orb !== false && <AssistantOrb open={orbOpen} onToggle={setOrbOpen} items={dialItems} />}
           {wid.clock !== false && <div className="clockwrap"><div className="island clock">
             <b>{now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</b><span className="dotsep">•</span><span>Seattle</span>
           </div></div>}
@@ -2161,7 +2172,7 @@ export default function App() {
 
       </div>
 
-      <div className="toolbar island">
+      <div className={`toolbar island ${anyOverlay ? "app-under" : ""}`}>
         <button onClick={() => openDesign("plan")}>{I.pen}<span>Design</span></button>
         <button onClick={() => setView("catalog")}>{I.plus}<span>Add</span></button>
         <button onClick={() => openDesign("programs")}>{I.grad}<span>Majors &amp; Minors</span></button>
