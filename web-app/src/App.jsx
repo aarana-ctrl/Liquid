@@ -1042,6 +1042,22 @@ function fetchCourseDetails(courseId) {
     try { window.postMessage({ source: "liquid", type: "lp-course-req", reqId, courseId }, "*"); } catch { resolve(null); }
   });
 }
+// Ask the extension whether the UW MyPlan session is currently signed in.
+// Resolves { ok:true, user } if alive, { ok:false } if the session is dead, or
+// { ok:false, reason:"no-extension" } if the extension never answers.
+function checkMyPlanSession() {
+  return new Promise((resolve) => {
+    const to = setTimeout(() => { window.removeEventListener("message", onMsg); resolve({ ok: false, reason: "no-extension" }); }, 4000);
+    function onMsg(e) {
+      if (e.source === window && e.data && e.data.source === "liquid-ext" && e.data.type === "lp-scrape-status-res") {
+        clearTimeout(to); window.removeEventListener("message", onMsg);
+        resolve(e.data.resp || { ok: false });
+      }
+    }
+    window.addEventListener("message", onMsg);
+    try { window.postMessage({ source: "liquid", type: "lp-scrape-status-req" }, "*"); } catch { clearTimeout(to); resolve({ ok: false, reason: "no-extension" }); }
+  });
+}
 const QMAP = [["Sp", "Spring"], ["A", "Autumn"], ["W", "Winter"], ["S", "Summer"]];
 function offeredLabel(code) {
   if (!code) return "";
@@ -1952,13 +1968,25 @@ export default function App() {
     const prevFetched = snapshot?.fetchedAt;
     if (auditPollRef.current) clearInterval(auditPollRef.current);
     auditPollRef.current = setInterval(async () => {
-      // Nothing came back in time — almost always an expired UW MyPlan session.
-      // Tell the user to re-login instead of silently doing nothing.
+      // Nothing came back in time. Instead of assuming the session expired, ask the
+      // extension whether the UW MyPlan session is actually alive, and tailor the
+      // message — so we never wrongly tell a signed-in user they're signed out.
       if (Date.now() - startAt > 85000) {
         clearInterval(auditPollRef.current);
         setAuditRunning(false); setAuditProgress(0);
-        setAuditNeedsLogin(true);
-        setAuditToast("MyPlan didn't respond — your UW sign-in may have expired. Open MyPlan, sign in, then try again.");
+        const status = await checkMyPlanSession();
+        if (status.ok) {
+          // Signed into MyPlan — the audit just didn't produce new numbers in time.
+          setAuditNeedsLogin(false);
+          setAuditToast("You're signed into MyPlan, but the audit didn't return new numbers in time. If this program was already up to date, your numbers are current — otherwise make sure the Liquid extension is enabled and try Re-sync again.");
+        } else if (status.reason === "no-extension") {
+          setAuditNeedsLogin(false);
+          setAuditToast("The Liquid extension isn't responding. Enable it in Chrome (or reload the extension), then try again.");
+        } else {
+          setAuditNeedsLogin(true);
+          setAuditToast("MyPlan didn't respond — your UW sign-in may have expired. Open MyPlan, sign in, then try again.");
+        }
+        setTimeout(() => setAuditToast(""), 12000);
         return;
       }
       try {
