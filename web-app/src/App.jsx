@@ -3,7 +3,7 @@ import { UNIVERSITY, MAJORS, COURSES, CATEGORY_LABELS, fetchMyPlanSnapshot, pars
 import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms, getCourseCatalog, getAuditQueue } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram, mergeCatalog, registerMajor, registerCourses } from "./data.js";
-import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit } from "./recommend.js";
+import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit, findAuditLoose } from "./recommend.js";
 import bgUrl from "./bg.jpg";
 
 // ---- quarter calendar (UW: Autumn, Winter, Spring, Summer) ------------------
@@ -993,6 +993,9 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
               const lvl = tab === "majors" ? "major" : "minor";
               const on = bookmarks?.some((b) => b.id === r.id && b.level === lvl);
               const auditEntry = r.exact && programs ? findAudit(r.name, programs, lvl) : null;
+              // Estimate card, but a DARS was captured for it before (name didn't line
+              // up exactly) → let the user open that last audit.
+              const lastAudit = !r.exact && programs ? findAuditLoose(r.name, programs, lvl) : null;
               return (
                 <div key={r.id} className={`island cmp-card ${i === 0 && results.length > 1 ? "best" : ""}`}>
                   <div className="cmp-head">
@@ -1027,6 +1030,9 @@ function CompareView({ completedSet, ipSet, currentMajorId, currentMinorIds, pro
                   )}
                   {r.needsAudit && runAuditNow && (
                     <button className="cmp-audit-btn" onClick={() => runAuditNow({ id: r.id, level: lvl, name: r.name })}>⟳ Auto-run DARS for exact requirements</button>
+                  )}
+                  {lastAudit && onOpenDetail && (
+                    <button className="cmp-audit-btn last" onClick={() => onOpenDetail(lastAudit)}>◫ Open last DARS{lastAudit.fetchedAt ? ` · ${new Date(lastAudit.fetchedAt).toLocaleDateString()}` : ""}</button>
                   )}
                 </div>
               );
@@ -1343,7 +1349,7 @@ const WIDGET_DEFS = [
 export const DEFAULT_SETTINGS = { theme: "tahoe", blur: 15, dim: 10, defaultView: "plan", liveOff: [], widgets: { audit: true, quarter: true, accountCard: true, clock: true } };
 
 // Full-screen Account & Settings page (theme, liquid-glass blur, widgets).
-function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape, covered }) {
+function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut, onClose, onForceRefresh, syncing, catalogInfo, scrape, startScrape, covered, token }) {
   const [tab, setTab] = useState("account");
   useEffect(() => {
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
@@ -1354,6 +1360,9 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
   const setWidget = (k, v) => setSettings((s) => ({ ...s, widgets: { ...s.widgets, [k]: v } }));
   const w = settings.widgets || {};
   const isDev = DEV_EMAILS.includes((user?.email || "").toLowerCase());
+  const [diagQueue, setDiagQueue] = useState(null);
+  const refreshDiag = () => { if (token) getAuditQueue(token).then((r) => setDiagQueue(r?.queue || [])).catch(() => setDiagQueue([])); };
+  useEffect(() => { if (isDev) refreshDiag(); }, [isDev]); // eslint-disable-line
   return (
     <div className={`account-page ${covered ? "app-under" : ""}`}>
       <div className="ds-inner">
@@ -1383,6 +1392,28 @@ function AccountPage({ user, snapshot, program, settings, setSettings, onSignOut
               </div>
               <p className="set-note">Force refresh re-runs your degree audit in a hidden MyPlan tab that closes itself — no windows to manage.</p>
             </section>
+
+            {isDev && (
+              <section className="island set-card">
+                <div className="set-h" style={{ justifyContent: "space-between" }}><span>Diagnostics</span>
+                  <button className="cd-refresh" onClick={refreshDiag}>↻ Refresh</button></div>
+                <div className="diag">
+                  <div className="diag-row"><span>Snapshot fetched</span><b>{snapshot?.fetchedAt ? new Date(snapshot.fetchedAt).toLocaleString() : "— (no snapshot!)"}</b></div>
+                  <div className="diag-row"><span>Stored programs</span><b>{snapshot?.programs ? Object.keys(snapshot.programs).length : 0}</b></div>
+                  <ul className="diag-list">
+                    {snapshot?.programs && Object.keys(snapshot.programs).length
+                      ? Object.entries(snapshot.programs).map(([k, p]) => (
+                        <li key={k}><code>{p.program || k}</code> · <em>{p.level || "?"}</em> · earned {Array.isArray(p.earned) ? p.earned.length : (p.audit?.earned ?? "?")}</li>
+                      ))
+                      : <li className="diag-empty">No per-program audits stored. If DARS "completed" but this is empty, the audit isn't reaching the backend.</li>}
+                  </ul>
+                  <div className="diag-row"><span>Audit queue</span><b>{diagQueue === null ? "…" : diagQueue.length === 0 ? "empty ✓" : `${diagQueue.length} pending`}</b></div>
+                  {diagQueue && diagQueue.length > 0 && <ul className="diag-list">{diagQueue.map((q, i) => <li key={i}><code>{q.name}</code> · <em>{q.level}</em></li>)}</ul>}
+                  <button className="cd-course-details" style={{ marginTop: 10 }}
+                    onClick={() => { try { navigator.clipboard.writeText(JSON.stringify({ fetchedAt: snapshot?.fetchedAt, programs: snapshot?.programs ? Object.values(snapshot.programs).map((p) => ({ program: p.program, level: p.level, earned: Array.isArray(p.earned) ? p.earned.length : p.audit?.earned })) : [], queue: diagQueue })); } catch (e) { /* */ } }}>Copy diagnostics</button>
+                </div>
+              </section>
+            )}
 
             <section className="island set-card">
               <h3 className="set-h">Course catalog</h3>
@@ -2081,12 +2112,15 @@ export default function App() {
     setSyncing(true);
     const snap = await fetchMyPlanSnapshot();
     applySnapshot(snap);
-    if (token) postSnapshot(token, snap);
+    // NEVER overwrite a real backend snapshot (with a per-program audit map) using
+    // the baked demo data — that's what was wiping DARS on refresh.
+    if (token && !(snapshot && snapshot.programs && Object.keys(snapshot.programs).length)) postSnapshot(token, snap);
     setSyncing(false);
   }
-  // Production handoff when signed in to the backend; demo fetch otherwise.
+  // Signed in → always use the real MyPlan handoff (or the extension). Only a
+  // fully logged-out demo session ever loads the baked sample data.
   function handleSync() {
-    if (backendOnline && token) setShowHandoff(true);
+    if (token) setShowHandoff(true);
     else handleSyncLocal();
   }
   function autoPlan() {
@@ -2254,7 +2288,9 @@ export default function App() {
         </div>
       )}
       <div className="dock-hotzone" aria-hidden />
-      <div className={`dock island ${showDesign || showAccount || showDetail || courseDetailId || detailReq ? "tucked" : ""}`}>
+      {/* Dock auto-hides everywhere (consistent with Design Studio) and slides in
+          when the cursor reaches the left edge. */}
+      <div className="dock island tucked">
         <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); closeTransient(); setView("plan"); }} title="Home">{I.home}</button>
         <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); closeTransient(); setView("catalog"); }} title="Catalog">{I.search}</button>
         <button className={showDesign ? "active" : ""} onClick={() => openDesign("plan")} title="Design Studio">{I.pen}</button>
@@ -2281,7 +2317,14 @@ export default function App() {
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
-            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} onDetailed={() => openDetail(null)} />}
+            {wid.audit !== false && <AuditCard program={program} snapshot={snapshot} completedSet={completedSet} ipSet={ipSet} onResync={forceRefresh} syncing={syncing} onDetailed={() => {
+              // Always show the DECLARED major's audit — never whatever program was
+              // last run in Compare. If it hasn't been audited yet, prompt to sync.
+              const dec = findAudit(program.name, snapshot?.programs, "major")
+                || (snapshot && snapshot.requirements && findAudit(program.name, { _top: { ...snapshot, level: "major" } }, "major"));
+              if (dec) openDetail(dec);
+              else { setAuditToast(`Run DARS for ${program.name} (Re-sync MyPlan) to see its full breakdown.`); setTimeout(() => setAuditToast(""), 6000); }
+            }} />}
             {wid.quarter !== false && <ThisQuarter ipSet={ipSet} courseTerms={courseTerms} />}
             {wid.accountCard !== false && <div className="island card" style={{ padding: 14, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
               <div><b style={{ fontSize: 13 }}>{user.name}</b><div style={{ fontSize: 11, color: "var(--text-dim)" }}>{user.email}</div></div>
@@ -2338,7 +2381,7 @@ export default function App() {
       {showAccount && (
         <AccountPage user={user} snapshot={snapshot} program={program}
           settings={settings} setSettings={setSettings} syncing={syncing}
-          onForceRefresh={forceRefresh} covered={covAccount}
+          onForceRefresh={forceRefresh} covered={covAccount} token={token}
           catalogInfo={catalogInfo} scrape={scrape} startScrape={startScrape}
           onSignOut={() => { try { localStorage.removeItem("lp_session"); } catch { /* */ } didAutoSync.current = false; setUser(null); setToken(null); setLoaded(false); setSnapshot(null); setCompleted([]); setInProgress([]); setChosen([]); setSchedule({}); setShowAccount(false); }}
           onClose={() => window.history.back()} />

@@ -185,6 +185,28 @@ export function findAudit(name, programs, level) {
   return null;
 }
 
+// A looser lookup for "was this program ever audited?" — used to offer an "Open
+// last DARS" fallback on a card that isn't matching exactly. Tries the strict
+// match first, then the stored program with the strongest significant-word overlap.
+const SKIP_WORDS = new Set(["bachelor", "science", "arts", "minor", "major", "the", "and", "for", "with", "sciences"]);
+export function findAuditLoose(name, programs, level) {
+  const exact = findAudit(name, programs, level);
+  if (exact) return exact;
+  if (!programs) return null;
+  const words = new Set(String(name).toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/).filter((w) => w.length > 3 && !SKIP_WORDS.has(w)));
+  if (!words.size) return null;
+  let best = null, bestOverlap = 0;
+  for (const key of Object.keys(programs)) {
+    const p = programs[key];
+    if (level && p.level && p.level !== level) continue;
+    const tw = String(p.program || key).toLowerCase().replace(/\([^)]*\)/g, " ").replace(/[^a-z0-9 ]/g, " ").split(/\s+/);
+    const overlap = tw.filter((w) => words.has(w)).length;
+    if (overlap > bestOverlap) { bestOverlap = overlap; best = p; }
+  }
+  return bestOverlap >= 2 ? best : null; // need at least 2 shared distinctive words
+}
+
 // Minor comparison: credits toward the minor come from courses in its departments.
 export function compareMinor(minor, completedSet, ipSet) {
   const taken = [...new Set([...completedSet, ...ipSet])];
