@@ -6,15 +6,22 @@
 (function () {
   function looksLikeDars(t) { return /Audit a UW Degree Program|Earned:\s*\d+\s*credits|DEGREE REQUIREMENTS/i.test(t); }
 
+  // The program the audit shows — a bachelor's MAJOR or a MINOR. Matching both is
+  // essential: without the minor case, minor audits produce an empty program name
+  // and doImport() skips them, so minor DARS data never reaches Liquid.
+  function progMatch(t) {
+    return t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i)
+      || t.match(/\bMINOR(?:\s+IN)?\s*\(?\s*([A-Z][A-Za-z &]+?)\s*\)?\s*(?:\n|Catalog)/i);
+  }
   // A fingerprint of the audit currently on screen, so we only re-import when it
   // actually changes (different program, or refreshed numbers).
   function signature(t) {
-    const prog = (t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i) || [])[1] || "";
+    const prog = (progMatch(t) || [])[1] || "";
     const cr = (t.match(/Earned:\s*(\d+)\s*credits\s*In-progress:\s*(\d+)\s*credits\s*Needs:\s*(\d+)\s*credits/i) || []).slice(1).join("-");
     return (prog + "|" + cr).trim();
   }
   function programName(t) {
-    const p = (t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i) || [])[1];
+    const p = (progMatch(t) || [])[1];
     return p ? p.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()) : "your degree";
   }
 
@@ -109,8 +116,7 @@
   }
   // The program the audit is currently showing (normalized), or null while loading.
   function renderedProgram() {
-    const t = document.body.innerText || "";
-    const m = t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i) || t.match(/MINOR (?:IN\s+|\()([A-Z][A-Za-z &]+?)[)\n]/i);
+    const m = progMatch(document.body.innerText || "");
     return m ? norm(m[1]) : null;
   }
 
