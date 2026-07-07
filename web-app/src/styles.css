@@ -307,6 +307,12 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .req-bucket { padding: 16px 18px; }
 .rb-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .rb-title { font-size: 15px; font-weight: 700; } .rb-title .met { font-size: 11px; color: var(--enrolled); margin-left: 6px; }
+/* source badges: Major / Minor / Both */
+.req-src { display: inline-block; vertical-align: middle; font-size: 9.5px; font-weight: 800; letter-spacing: .4px; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.src-major { color: #9db8ff; border-color: rgba(120,150,255,0.5); background: rgba(120,150,255,0.14); }
+.src-minor { color: #f6c14e; border-color: rgba(246,193,78,0.5); background: rgba(246,193,78,0.14); }
+.src-both { color: #5fd0a8; border-color: rgba(95,208,168,0.5); background: rgba(95,208,168,0.14); }
+.req-legend { float: right; display: inline-flex; gap: 6px; letter-spacing: normal; }
 .rb-sub { font-size: 11.5px; color: var(--text-dim); margin-top: 2px; }
 .rb-count { font-size: 14px; font-weight: 700; color: var(--accent-2); white-space: nowrap; }
 .rb-bar { height: 7px; border-radius: 7px; background: var(--track); overflow: hidden; margin: 10px 0 12px; }
@@ -861,6 +867,13 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 
 /* Auto-run DARS live progress bar (item 9) */
 .audit-progress { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 201; width: min(520px, 88vw); padding: 12px 18px; animation: apIn .3s ease; }
+/* one combined status card (progress + message) */
+.audit-status { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); z-index: 201; width: min(560px, 92vw); padding: 14px 18px; animation: apIn .3s ease; }
+.audit-status .ap-top { margin-bottom: 10px; }
+.audit-status .ap-top .ap-x { margin-left: 10px; }
+.as-msg { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 600; color: var(--text); }
+.as-msg > span { flex: 1 1 auto; }
+.as-msg.as-sub { margin-top: 11px; padding-top: 11px; border-top: 1px solid var(--glass-brd); font-weight: 500; color: var(--text-dim); }
 @keyframes apIn { from { opacity: 0; transform: translate(-50%, -8px); } to { opacity: 1; transform: translate(-50%, 0); } }
 .ap-top { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 9px; }
 .ap-top b { margin-left: auto; color: var(--accent); }

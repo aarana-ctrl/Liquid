@@ -648,14 +648,26 @@ function ThisQuarter({ ipSet, courseTerms }) {
 }
 
 // ---- requirements / catalog ------------------------------------------------
+// Which program a requirement belongs to — so a combined major+minor plan shows,
+// at a glance, what's for the major, the minor, or counts toward both.
+function reqSource(r, hasMinor) {
+  if (typeof r.fromMinor === "string" || r.kind === "info") return { label: "Minor", cls: "src-minor" };
+  if (Array.isArray(r.fromMinor) && r.fromMinor.length) return { label: "Major + Minor", cls: "src-both" };
+  return hasMinor ? { label: "Major", cls: "src-major" } : null;
+}
+function ReqSrcBadge({ r, hasMinor }) {
+  const s = reqSource(r, hasMinor);
+  return s ? <span className={`req-src ${s.cls}`}>{s.label}</span> : null;
+}
 function Requirements({ major, completedSet, ipSet, chosenSet, toggleCompleted, removeChosen, onOpen }) {
+  const hasMinor = (major.minorIds || []).length > 0;
   return (
     <>
-      <div className="section-h">Degree Requirements · Catalog</div>
+      <div className="section-h">Degree Requirements · Catalog{hasMinor && <span className="req-legend"><span className="req-src src-major">Major</span><span className="req-src src-minor">Minor</span><span className="req-src src-both">Both</span></span>}</div>
       <div className="reqs">
         {major.requirements.map((r) => {
           if (r.kind === "info") return (
-            <div className="island req-bucket" key={r.id}><div className="rb-head"><div><div className="rb-title">{r.label} {r.met && <span className="met">✓ met</span>}</div><div className="rb-sub">{r.note}</div></div></div></div>
+            <div className="island req-bucket" key={r.id}><div className="rb-head"><div><div className="rb-title">{r.label} <ReqSrcBadge r={r} hasMinor={hasMinor} /> {r.met && <span className="met">✓ met</span>}</div><div className="rb-sub">{r.note}</div></div></div></div>
           );
           const all = r.kind === "all";
           const fulfilling = all ? r.courses : r.courses.filter((id) => completedSet.has(id) || ipSet.has(id) || chosenSet.has(id));
@@ -671,7 +683,7 @@ function Requirements({ major, completedSet, ipSet, chosenSet, toggleCompleted, 
           const candidates = r.courses.filter((id) => !completedSet.has(id) && !ipSet.has(id) && !chosenSet.has(id));
           return (
             <div className="island req-bucket" key={r.id}>
-              <div className="rb-head"><div><div className="rb-title">{r.label} {met && <span className="met">✓ met</span>}</div>
+              <div className="rb-head"><div><div className="rb-title">{r.label} <ReqSrcBadge r={r} hasMinor={hasMinor} /> {met && <span className="met">✓ met</span>}</div>
                 <div className="rb-sub">{r.kind === "credits" ? `${doneCr} done · ${ipCr} in-prog · ${planCr} planned` : `${doneCount} done`} · need {need} {unit || "courses"}</div></div>
                 <div className="rb-count">{have}/{need}{unit ? " cr" : ""}</div></div>
               <div className="rb-bar"><div className="rb-fill" style={{ width: `${pct}%`, background: met ? "var(--enrolled)" : "var(--planned)" }} /></div>
@@ -2208,29 +2220,35 @@ export default function App() {
   return (
     <>
       <Sky />
-      {auditRunning && (
-        <div className="audit-progress island">
-          <div className="ap-top"><span className="ap-spin" /> Running DARS in the background<b>{Math.round(auditProgress)}%</b></div>
-          <div className="ap-track"><div className="ap-fill" style={{ width: `${auditProgress}%` }} /></div>
+      {/* One combined status card: progress bar + message + actions, so nothing overlaps. */}
+      {(auditRunning || auditToast) && (
+        <div className="audit-status island">
+          {auditRunning && (
+            <div className="ap-top"><span className="ap-spin" /> Running DARS in the background<b>{Math.round(auditProgress)}%</b>
+              {!auditToast && <button className="ap-x" onClick={() => { setAuditRunning(false); }}>×</button>}
+            </div>
+          )}
+          {auditRunning && <div className="ap-track"><div className="ap-fill" style={{ width: `${auditProgress}%` }} /></div>}
+          {auditToast && (
+            <div className={`as-msg ${auditRunning ? "as-sub" : ""}`}>
+              <span>{auditToast}</span>
+              {auditNeedsLogin && (
+                <button className="audit-toast-btn" onClick={() => { window.open("https://myplan.uw.edu/audit/#/degree", "_blank"); setAuditToast(""); setAuditNeedsLogin(false); }}>Open MyPlan to sign in ↗</button>
+              )}
+              <button className="audit-toast-x" onClick={() => { setAuditToast(""); setAuditNeedsLogin(false); setAuditRunning(false); }}>×</button>
+            </div>
+          )}
         </div>
       )}
+      {/* Catalog scrape has its own independent card (dev-only, rarely concurrent). */}
       {(scrape.running || scrape.phase === "done" || scrape.phase === "error") && (
-        <div className="audit-progress island" style={{ top: auditRunning ? 92 : 18 }}>
+        <div className="audit-status island" style={{ top: (auditRunning || auditToast) ? 118 : 18 }}>
           <div className="ap-top">
             {scrape.phase === "error" ? <span className="ap-warn">⚠</span> : scrape.running ? <span className="ap-spin" /> : <span className="ap-done">✓</span>}
             <span>{scrape.msg}</span>
             {scrape.running ? <b>{Math.round(scrape.pct)}%</b> : <button className="ap-x" onClick={() => setScrape((s) => ({ ...s, phase: "" }))}>×</button>}
           </div>
           {scrape.running && <div className="ap-track"><div className="ap-fill" style={{ width: `${scrape.pct}%` }} /></div>}
-        </div>
-      )}
-      {auditToast && (
-        <div className="audit-toast island" style={{ top: auditRunning ? 78 : 22 }}>
-          <span>{auditToast}</span>
-          {auditNeedsLogin && (
-            <button className="audit-toast-btn" onClick={() => { window.open("https://myplan.uw.edu/audit/#/degree", "_blank"); setAuditToast(""); setAuditNeedsLogin(false); }}>Open MyPlan to sign in ↗</button>
-          )}
-          <button className="audit-toast-x" onClick={() => { setAuditToast(""); setAuditNeedsLogin(false); }}>×</button>
         </div>
       )}
       <div className="dock-hotzone" aria-hidden />
