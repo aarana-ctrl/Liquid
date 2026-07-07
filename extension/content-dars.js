@@ -11,7 +11,8 @@
   // and doImport() skips them, so minor DARS data never reaches Liquid.
   function progMatch(t) {
     return t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i)
-      || t.match(/\bMINOR(?:\s+IN)?\s*\(?\s*([A-Z][A-Za-z &]+?)\s*\)?\s*(?:\n|Catalog)/i);
+      || t.match(/\bMINOR\s*\(\s*([^)\n]{2,60}?)\s*\)/i)                                                  // MINOR (NAME)
+      || t.match(/\bMINOR(?:\s+IN)?\s*([A-Z][A-Za-z0-9 &,'.\/-]{2,60}?)\s*(?:\n|\r|Catalog|Prepared|Requirements)/i); // MINOR [IN] NAME
   }
   // A fingerprint of the audit currently on screen, so we only re-import when it
   // actually changes (different program, or refreshed numbers).
@@ -45,7 +46,12 @@
     const text = document.body.innerText || "";
     if (!looksLikeDars(text)) { if (manual) toast("Open your DARS audit page first.", false); return; }
     const sig = signature(text);
-    if (!manual && (busy || sig === lastSig || !sig.replace(/\|.*/, ""))) return; // nothing new
+    // "Meaningful" = a real audit is on screen: a recognized program name OR an
+    // "Earned: N credits" summary. Crucially this does NOT require the program-name
+    // regex to match, so a minor audit still imports even if its header wording is
+    // unusual — the backend parser extracts the minor name from the full text.
+    const meaningful = !!((progMatch(text) || [])[1]) || /Earned:\s*\d+\s*credit/i.test(text);
+    if (!manual && (busy || sig === lastSig || !meaningful)) return; // nothing new
     busy = true;
     chrome.runtime.sendMessage({ type: "lp-import", darsText: text }, (resp) => {
       busy = false;
@@ -128,26 +134,41 @@
     if (!type) return looksLikeLogin() ? "login" : false;
     const wantMinor = level === "minor";
     const typeOpt = [...type.options].find((o) => wantMinor ? /minor/i.test(o.textContent) : /major/i.test(o.textContent));
-    if (typeOpt && type.value !== typeOpt.value) { setNativeSelect(type, typeOpt.value); await sleep(1200); }
-    const prog = document.querySelector("#programSelector");
-    if (!prog) return false;
-    const opt = matchOption(prog, name);
-    if (!opt) return false; // fail safe — never guess-click
+    // Changing Major↔Minor asynchronously re-populates the program list. Majors are
+    // the default so they're ready immediately, but a minor needs the list to reload
+    // — so poll for the target option to appear instead of a fixed wait.
+    if (typeOpt && type.value !== typeOpt.value) { setNativeSelect(type, typeOpt.value); }
+    let opt = null, prog = null;
+    for (let i = 0; i < 22; i++) { // up to ~9s for the minor list to populate
+      prog = document.querySelector("#programSelector");
+      if (prog) { opt = matchOption(prog, name); if (opt) break; }
+      await sleep(400);
+    }
+    if (!prog || !opt) return false; // fail safe — never guess-click
     setNativeSelect(prog, opt.value);
     await sleep(700);
     const run = [...document.querySelectorAll("button, a, input[type=submit]")]
       .find((b) => /audit your degree/i.test(b.textContent || b.value || ""));
     if (!run) return false;
-    run.click();
-    // The audit generates asynchronously (~10–25s, spinner shows meanwhile). Wait
-    // until the rendered program MATCHES the one we asked for, then import. Never
-    // import on timeout — that would capture the previously-shown program.
     const want = norm(name);
+    const beforeSig = signature(document.body.innerText || "");
+    run.click();
+    // The audit generates asynchronously (~10–25s). Consider it ready when the audit
+    // content actually changed AND the requested program is what's now shown — either
+    // by its header (renderedProgram) OR by the picker having closed onto an audit
+    // that names it. This second path works even if the minor header wording is
+    // unusual. Never import on timeout — that would capture the previous program.
     for (let i = 0; i < 45; i++) {
       await sleep(1500);
       if (looksLikeLogin()) return "login";
+      const t = document.body.innerText || "";
+      if (!looksLikeDars(t)) continue;
       const rp = renderedProgram();
-      if (rp && (rp.includes(want) || want.includes(rp))) { await sleep(1500); doImport(false); return true; }
+      const headerMatch = rp && (rp.includes(want) || want.includes(rp));
+      const sig = signature(t);
+      const pickerClosed = !document.querySelector("#programSelector");
+      const nameShown = pickerClosed && sig !== beforeSig && norm(t).includes(want);
+      if (headerMatch || nameShown) { await sleep(1500); doImport(false); return true; }
     }
     return false; // timed out without the right audit rendering — don't import wrong data
   }

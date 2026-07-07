@@ -7,7 +7,10 @@ export function parseDars(text) {
 
   // Program title — bachelor's major, or a minor audit ("MINOR (STATISTICS)").
   const bach = t.match(/BACHELOR OF (?:SCIENCE|ARTS) \(([^)]+)\)/i);
-  const minorM = !bach && t.match(/\bMINOR(?:\s+IN)?\s*\(?\s*([A-Z][A-Za-z &]+?)\s*\)?\s*(?:\n|Catalog)/i);
+  const minorM = !bach && (
+    t.match(/\bMINOR\s*\(\s*([^)\n]{2,60}?)\s*\)/i)                                                        // MINOR (NAME)
+    || t.match(/\bMINOR(?:\s+IN)?\s*([A-Z][A-Za-z0-9 &,'.\/-]{2,60}?)\s*(?:\n|\r|Catalog|Prepared|Requirements)/i) // MINOR [IN] NAME
+  );
   const program = bach ? bach[1] : null;
   const minorName = minorM ? minorM[1].trim() : null;
   const cased = (s) => s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());

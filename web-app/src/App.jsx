@@ -2142,7 +2142,10 @@ export default function App() {
   const hour = now.getHours();
   const greet = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  const openDesign = (m = "plan") => { setDesignMode(m); setShowDesign(true); };
+  // Switching to a top-level view dismisses any transient overlay (the course
+  // picker / course details) so two overlays never render at once.
+  const closeTransient = () => { setDetailReq(null); setCourseDetailId(null); };
+  const openDesign = (m = "plan") => { closeTransient(); setShowAccount(false); setShowDetail(false); setDesignMode(m); setShowDesign(true); };
   // When any full-screen overlay is open, the home layer is hidden so the single
   // persistent background (root <Sky/>) shows through it seamlessly.
   const anyOverlay = showDesign || showAccount || showDetail || courseDetailId || detailReq || showHandoff;
@@ -2185,11 +2188,11 @@ export default function App() {
       )}
       <div className="dock-hotzone" aria-hidden />
       <div className={`dock island ${showDesign || showAccount || showDetail || courseDetailId || detailReq ? "tucked" : ""}`}>
-        <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setCourseDetailId(null); setView("plan"); }} title="Home">{I.home}</button>
-        <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); setCourseDetailId(null); setView("catalog"); }} title="Catalog">{I.search}</button>
-        <button className={showDesign ? "active" : ""} onClick={() => { setShowAccount(false); setShowDetail(false); openDesign("plan"); }} title="Design Studio">{I.pen}</button>
+        <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); closeTransient(); setView("plan"); }} title="Home">{I.home}</button>
+        <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); closeTransient(); setView("catalog"); }} title="Catalog">{I.search}</button>
+        <button className={showDesign ? "active" : ""} onClick={() => openDesign("plan")} title="Design Studio">{I.pen}</button>
         <div className="sep" />
-        <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowDetail(false); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
+        <button className={showAccount ? "active" : ""} onClick={() => { setShowDesign(false); setShowDetail(false); closeTransient(); setShowAccount(true); }} title="Account & Settings">{I.user}</button>
       </div>
 
       <div className={`app ${anyOverlay ? "app-under" : ""}`}>
