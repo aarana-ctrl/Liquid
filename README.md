@@ -2,9 +2,9 @@
 
 # 🌊 Liquid
 
-### A liquid-glass degree planner for the University of Washington — powered by *your real* MyPlan, DARS, DawgPath, and RateMyProfessors data.
+### A planner for the students of theUniversity of Washington — powered by *real* MyPlan, DARS, DawgPath, and RateMyProfessors data.
 
-Plan every quarter, compare majors and minors with exact per-category requirements, and see grade distributions, professor ratings, and live seat counts for any course — all in one calm, glassy interface.
+Plan every quarter, compare majors and minors with exact per-category requirements, and see grade distributions, professor ratings, and live seat counts for any course — all in one calm, beautiful interface. 
 
 </div>
 
@@ -12,13 +12,13 @@ Plan every quarter, compare majors and minors with exact per-category requiremen
 
 ## What is Liquid?
 
-UW students juggle a lot of tabs: **MyPlan** to build a schedule, **DARS** to audit degree progress, **DawgPath** to check grade distributions, and **RateMyProfessors** to size up instructors. Liquid pulls all of it into a single, beautiful planning surface — and keeps the numbers *exact* by reading your own signed-in university data through a companion browser extension, so nothing is copy-pasted or guessed.
+UW students juggle a lot of tabs and tasks to plan their schedule: **MyPlan** to build a schedule, **DARS** to audit degree progress to see what classes they have left to take, **DawgPath** to check grade distributions of specific classes, and **RateMyProfessors** to size up instructors. Liquid pulls all of it into a single, beautiful planning surface — and keeps the numbers *exact* by reading your own signed-in university data through a companion browser extension, so nothing is guessed. Liquid uses its algorithm to help students plan what courses will help them the most and when they should take it.
 
 It answers the questions students actually ask:
 
 - *"What's left for my degree, and which gen-eds knock out the most requirements at once?"*
 - *"If I switch to Informatics or add a Data Science minor, how much more work is it — exactly?"*
-- *"Is this professor any good, what's the grade distribution, and are there seats left this quarter?"*
+- *"Is this professor harsh, what's the grade distribution, and are there seats left this quarter?"*
 - *"Do these two classes conflict, and can I actually finish on time?"*
 
 ---
@@ -29,7 +29,7 @@ It answers the questions students actually ask:
 Your DARS audit is imported automatically and rendered as a live progress card and a full per-requirement breakdown — earned / in-progress / remaining, GPA, and every unmet requirement with the courses that satisfy it.
 
 **Compare majors & minors side by side.**
-Line up any programs and see every requirement. Programs you've run through DARS are marked ✓ **exact** with real per-category numbers and specific required courses; everything else is a transcript estimate until you run its audit. Auto-run DARS across a whole batch in the background. When you add a minor, requirements are tagged **Major / Minor / Both** so you always know what counts for what.
+Line up any programs and see every requirement. This helps students contemplate and weigh their choices at the University of Washington. Programs you've run through DARS are marked ✓ **exact** with real per-category numbers and specific required courses; everything else is a transcript estimate until you run its audit. Auto-run DARS across a whole batch in the background. When you add a minor, requirements are tagged **Major / Minor / Both** so you always know what counts for what.
 
 **A recommendation model built around what you still need.**
 The gen-ed course picker ranks courses by how much of your *remaining* requirements each one covers — a course that fills three areas you still need beats one that only double-counts areas you've finished. Full-screen, searchable, and filterable by area and credits.
@@ -148,7 +148,7 @@ Liquid reads a signed-in student's *own* university data, on their own machine, 
 
 <div align="center">
 
-**Liquid** — because planning your degree should feel like calm water, not twelve open tabs.
+**Liquid** — because planning your degree shouldn't be 4 different windows with 12 tabs.
 
 *Not affiliated with or endorsed by the University of Washington.*
 
