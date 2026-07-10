@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌊 Liquid
+# Liquid
 
 ### A planner for the students of theUniversity of Washington — powered by *real* MyPlan, DARS, DawgPath, and RateMyProfessors data.
 
