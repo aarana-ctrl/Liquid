@@ -14,8 +14,12 @@ const TERM_ORDER = { WI: 0, SP: 1, SU: 2, AU: 3 };
 const ORDER_TERM = ["WI", "SP", "SU", "AU"];
 const qAbs = (term, year) => year * 4 + TERM_ORDER[term];
 const absToQ = (abs) => ({ term: ORDER_TERM[((abs % 4) + 4) % 4], year: Math.floor(abs / 4) });
-const qLabelAbs = (abs) => { const q = absToQ(abs); return `${TERM_NAME[q.term]} ${q.year}`; };
-const qShort = (abs) => { const q = absToQ(abs); return `${q.term}${String(q.year).slice(2)}`; };
+// UW academic year: it starts in Summer and ends the following Spring, and every
+// quarter in that year carries the same label. So Winter/Spring (Jan–Jun) belong
+// to the PRIOR calendar year's academic year (Winter 2026 → academic year 2025).
+const academicYear = (term, year) => (term === "WI" || term === "SP") ? year - 1 : year;
+const qLabelAbs = (abs) => { const q = absToQ(abs); return `${TERM_NAME[q.term]} ${academicYear(q.term, q.year)}`; };
+const qShort = (abs) => { const q = absToQ(abs); return `${q.term}${String(academicYear(q.term, q.year)).slice(2)}`; };
 function parseQ(code) {
   const m = /^([A-Z]{2})(\d{2})$/.exec((code || "").toUpperCase());
   if (!m || TERM_ORDER[m[1]] == null) return null;
@@ -33,11 +37,16 @@ function nextQuarters(startAbs, n, includeSummer) {
   while (out.length < n) { if (includeSummer || absToQ(a).term !== "SU") out.push(a); a++; }
   return out;
 }
-// "Current" quarter = the quarter of the in-progress courses if any (that's what
-// the student is doing now per their registration); otherwise the wall clock.
+// "Current" quarter = the wall-clock quarter (what the student is actually in
+// right now, matching MyPlan). In-progress courses in a LATER quarter are upcoming
+// registrations, not the current term — so they must not push "current" forward.
+// Only fall back to the course data if the clock looks implausibly behind it.
 function effectiveCurrentAbs(ipSet, courseTerms) {
+  const wall = currentAbs();
   const ip = [...ipSet].map((id) => parseQ(courseTerms[id])).filter((a) => a != null);
-  return ip.length ? Math.max(...ip) : currentAbs();
+  if (!ip.length) return wall;
+  const minIp = Math.min(...ip);
+  return wall < minIp - 1 ? minIp : wall; // clock way behind the data → use earliest in-progress
 }
 const CAT_VAR = {
   intro: "var(--cat-intro)", math: "var(--cat-math)", core: "var(--cat-core)", core400: "var(--cat-core400)",
@@ -248,16 +257,23 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet,
   // non-summer runway. Empty PAST quarters are hidden; future summers show only
   // if they hold a course.
   const placedAbs = planArr.map(getAbs).filter((a) => a != null && a > cur - 24 && a < cur + 48);
-  const maxAbs = Math.max(cur + 6, ...(placedAbs.length ? placedAbs : [cur]));
+  const maxAbs = Math.max(cur + 9, ...(placedAbs.length ? placedAbs : [cur])); // ~2+ yrs of future quarters to plan into
   const content = new Set(placedAbs);
   const visibleSet = new Set(content); visibleSet.add(cur);
   for (let a = cur; a <= maxAbs; a++) { const q = absToQ(a); if (q.term !== "SU") visibleSet.add(a); else if (content.has(a)) visibleSet.add(a); }
   const quarters = [...visibleSet].sort((x, y) => x - y);
 
-  // academic-year grouping for the Grid view (Autumn Y … Summer Y+1)
-  const groupYear = (abs) => { const q = absToQ(abs); return q.term === "AU" ? q.year : q.year - 1; };
+  // academic-year grouping for the Grid view (Summer Y … Spring Y+1)
+  const groupYear = (abs) => { const q = absToQ(abs); return academicYear(q.term, q.year); };
   const _ays = new Set(placedAbs.map(groupYear)); _ays.add(groupYear(cur)); _ays.add(groupYear(cur) + 1);
   const academicYears = [..._ays].sort((a, b) => a - b);
+  // Catalog-year options: from the earliest academic year you actually have courses
+  // in, through three years ahead (so you can plan future quarters) — never earlier.
+  const _dataAY = placedAbs.map(groupYear);
+  const _minAY = _dataAY.length ? Math.min(...(_dataAY.concat(groupYear(cur)))) : groupYear(cur) - 1;
+  const catYears = [];
+  for (let y = _minAY; y <= groupYear(cur) + 3; y++) catYears.push(`AU ${String(y).slice(2)}`);
+  if (catYear && !catYears.includes(catYear)) catYears.unshift(catYear);
 
   const contentOf = (abs) => planArr.filter((id) => getAbs(id) === abs)
     .sort((x, y) => (completedSet.has(y) - completedSet.has(x)) || (ipSet.has(y) - ipSet.has(x)));
@@ -340,7 +356,7 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet,
         </div>
         <div className="plan-head-right">
           <select className="yearsel" value={catYear} onChange={(e) => setCatYear(e.target.value)} title="Catalog year">
-            {["AU 22", "AU 23", "AU 24", "AU 25", "AU 26"].map((y) => <option key={y} value={y}>{y}</option>)}
+            {catYears.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
           <div className="seg">
             <button className={mode !== "grid" ? "active" : ""} onClick={() => setMode("plan")}>Timeline</button>

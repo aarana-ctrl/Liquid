@@ -571,7 +571,7 @@ h1, h2, h3, .greeting p, .cd-sub, .ds-topbar p { text-shadow: 0 1px 2px rgba(6, 
 .da-course { display: flex; align-items: baseline; gap: 10px; padding: 6px 10px; border-radius: 8px; font-size: 13px; }
 .da-course:hover { background: var(--glass-2); }
 .da-course b { min-width: 84px; color: var(--text); } .da-course span { flex: 1 1 auto; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.da-course em { font-style: normal; color: var(--text-faint); font-size: 12px; }
+.da-course em { font-style: normal; color: var(--text-faint); font-size: 12px; flex: none; white-space: nowrap; }
 .ds-aurora { position: absolute; inset: 0; z-index: 0; }
 .ds-aurora .blob { opacity: 0.45; }
 .ds-inner { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; padding: 26px 40px 30px 48px; }
