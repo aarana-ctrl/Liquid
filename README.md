@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🌊 Liquid
+#Liquid
 
 ### A liquid-glass degree planner for the University of Washington — powered by *your real* MyPlan, DARS, DawgPath, and RateMyProfessors data.
 
