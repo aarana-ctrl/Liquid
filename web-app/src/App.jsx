@@ -4,6 +4,7 @@ import { mockSignIn } from "./auth.js";
 import { apiHealth, devLogin, getPlan, savePlan, getSnapshot, postSnapshot, startImport, importDars, me, oidcStartUrl, API_BASE, enqueueAudit, getPrograms, getCourseCatalog, getAuditQueue } from "./api.js";
 import { MINORS, MAJOR_CATALOG, buildProgram, resolveProgram, mergeCatalog, registerMajor, registerCourses } from "./data.js";
 import { recommend, poolForArea, computeRemaining, autoSelect, recommendGlobal, degreeProgress, compareProgram, compareMinor, compareFromAudit, findAudit, findAuditLoose } from "./recommend.js";
+import { seriesOf, fitCourses, quarterLabel as plannerQLabel } from "./planner.js";
 import bgUrl from "./bg.jpg";
 
 // ---- quarter calendar (UW: Autumn, Winter, Spring, Summer) ------------------
@@ -229,7 +230,46 @@ function Login({ onSignIn, backendOnline, oidcEnabled }) {
 }
 
 // ---- plan board (central island) -------------------------------------------
-function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode }) {
+// Switch between saved plan scenarios, or save the current one as a new plan.
+function PlansMenu({ scenarios }) {
+  const { plans, activePlanId, activePlanName, switchPlan, saveAsNewPlan, renamePlan, deletePlan } = scenarios || {};
+  const [open, setOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState("");
+  useEffect(() => { if (!open) return; const h = () => setOpen(false); window.addEventListener("click", h); return () => window.removeEventListener("click", h); }, [open]);
+  if (!plans) return null;
+  return (
+    <div className="plans-menu" onClick={(e) => e.stopPropagation()}>
+      <button className="plans-btn" onClick={() => setOpen((o) => !o)} title="Switch or save plans">▤ {activePlanName} ▾</button>
+      {open && (
+        <div className="plans-pop island">
+          <div className="plans-pop-h">Your plans <span>completed courses stay shared</span></div>
+          {plans.map((p) => (
+            <div key={p.id} className={`plans-row ${p.id === activePlanId ? "on" : ""}`}>
+              <button className="plans-name" onClick={() => { switchPlan(p.id); setOpen(false); }}>{p.id === activePlanId ? "●" : "○"} {p.name}</button>
+              {plans.length > 1 && <button className="plans-x" title="Delete this plan" onClick={() => deletePlan(p.id)}>×</button>}
+            </div>
+          ))}
+          <div className="plans-sep" />
+          {renaming ? (
+            <div className="plans-new">
+              <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Plan name…"
+                onKeyDown={(e) => { if (e.key === "Enter") { renamePlan(activePlanId, name); setRenaming(false); setName(""); } }} />
+              <button onClick={() => { renamePlan(activePlanId, name); setRenaming(false); setName(""); }}>Save</button>
+            </div>
+          ) : (
+            <>
+              <button className="plans-action" onClick={() => { saveAsNewPlan(""); setOpen(false); }}>＋ Save current as a new plan</button>
+              <button className="plans-action" onClick={() => { setName(activePlanName); setRenaming(true); }}>✎ Rename this plan</button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode, scenarios }) {
   const boardRef = useRef(null), colsRef = useRef(null), cardRefs = useRef({}), curColRef = useRef(null);
   const [edges, setEdges] = useState([]);
   const [dragId, setDragId] = useState(null);
@@ -355,6 +395,8 @@ function PlanBoard({ program, snapshot, planIds, completedSet, ipSet, chosenSet,
           <div><h3>{UNIVERSITY.name} ▾</h3><span>{program.name}</span></div>
         </div>
         <div className="plan-head-right">
+          <PlansMenu scenarios={scenarios} />
+          <button className="plans-btn" onClick={() => window.dispatchEvent(new CustomEvent("lp-smart-add", { detail: null }))} title="Add a course and slot it into your plan">⚡ Smart add</button>
           <select className="yearsel" value={catYear} onChange={(e) => setCatYear(e.target.value)} title="Catalog year">
             {catYears.map((y) => <option key={y} value={y}>{y}</option>)}
           </select>
@@ -503,6 +545,89 @@ function CourseBrowser({ program, planIds, completedSet, ipSet, chosenSet, addCh
 
 // ---- side cards ------------------------------------------------------------
 const DARS_AUDIT_URL = "https://myplan.uw.edu/audit/#/degree";
+// Smart Add — add a course (or its whole series) and slot it into your plan. If
+// there's no room, it proposes concrete reforms (move / drop) instead of failing.
+function SmartAddDialog({ presetId, program, chosen, schedule, completedSet, ipSet, setChosen, setSchedule, onClose }) {
+  const [q, setQ] = useState("");
+  const [picked, setPicked] = useState(presetId || null);
+  const [wholeSeries, setWholeSeries] = useState(true);
+  const [extraSched, setExtraSched] = useState({}); // reforms the user has applied
+  useEffect(() => { const k = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k); }, [onClose]);
+  const needle = q.trim().toLowerCase();
+  const results = useMemo(() => needle ? Object.values(COURSES)
+    .filter((c) => !completedSet.has(c.id) && !ipSet.has(c.id) && (c.id.toLowerCase().includes(needle.replace(/\s+/g, "")) || (c.title || "").toLowerCase().includes(needle)))
+    .slice(0, 8) : [], [needle, completedSet, ipSet]);
+  const series = picked ? seriesOf(picked) : null;
+  const toAdd = picked ? (series && wholeSeries ? series : [picked]) : [];
+  const baseSched = { ...schedule, ...extraSched };
+  const fit = toAdd.length ? fitCourses(toAdd, { schedule: baseSched, completed: completedSet, inProgress: ipSet, startAbs: effectiveCurrentAbs(ipSet, {}) + 1 }) : null;
+  const fmt = (id) => id.replace(/([A-Z&])(\d)/, "$1 $2");
+  const applyReform = (s) => {
+    if (s.type === "move") setExtraSched((e) => ({ ...e, [s.course]: s.to }));       // move a planned course later
+    else if (s.type === "drop") { setChosen((p) => p.filter((x) => x !== s.course)); setExtraSched((e) => { const n = { ...e }; delete n[s.course]; return n; }); }
+  };
+  const commit = () => {
+    if (!fit) return;
+    setChosen((p) => [...new Set([...p, ...toAdd])]);
+    setSchedule((s) => ({ ...s, ...extraSched, ...Object.fromEntries(toAdd.map((id) => [id, fit.schedule[id]]).filter(([, v]) => v != null)) }));
+    onClose();
+  };
+  return (
+    <div className="account-page smart-add" style={{ zIndex: 62 }}>
+      <div className="ds-inner" style={{ maxWidth: 720, margin: "0 auto" }}>
+        <div className="ds-topbar">
+          <div><div className="ds-eyebrow">Plan a course</div><h2>Smart add</h2><p>Pick a course — Liquid slots it into an open quarter, or tells you exactly what to move.</p></div>
+          <button className="page-close" onClick={onClose}>✕ Close</button>
+        </div>
+        <div className="pick-scroll" style={{ display: "block" }}>
+          <input className="mm-search" value={q} onChange={(e) => { setQ(e.target.value); }} placeholder="Search a course to add… (e.g. SANS, ENGL 200)" autoFocus />
+          {results.length > 0 && !picked && (
+            <div className="sa-results">
+              {results.map((c) => <button key={c.id} className="sa-result" onClick={() => { setPicked(c.id); setQ(""); }}><b>{fmt(c.id)}</b> <span>{c.title}</span><em>{c.credits} cr</em></button>)}
+            </div>
+          )}
+          {picked && (
+            <div className="sa-picked island">
+              <div className="sa-picked-h"><b>{fmt(picked)}</b> — {COURSES[picked]?.title}<button className="sa-change" onClick={() => setPicked(null)}>change</button></div>
+              {series && (
+                <div className="sa-series">
+                  <div className="sa-series-q">This is part of a series: {series.map(fmt).join(" → ")}. Add the whole series?</div>
+                  <div className="sa-series-toggle">
+                    <button className={wholeSeries ? "on" : ""} onClick={() => setWholeSeries(true)}>Whole series ({series.length})</button>
+                    <button className={!wholeSeries ? "on" : ""} onClick={() => setWholeSeries(false)}>Just {fmt(picked)}</button>
+                  </div>
+                </div>
+              )}
+              {fit && (
+                <div className="sa-fit">
+                  {fit.placed.length > 0 && (
+                    <div className="sa-placed">
+                      <div className="sa-h ok">✓ Fits in your plan</div>
+                      {fit.placed.map((id) => <div key={id} className="sa-line"><b>{fmt(id)}</b><span>→ {plannerQLabel(fit.schedule[id])}</span></div>)}
+                    </div>
+                  )}
+                  {fit.unplaced.length > 0 && (
+                    <div className="sa-unplaced">
+                      <div className="sa-h warn">⚠ No open room for {fit.unplaced.map(fmt).join(", ")}</div>
+                      {fit.suggestions.map((s, i) => (
+                        <div key={i} className="sa-reform">
+                          <span>{s.label}</span>
+                          {(s.type === "move" || s.type === "drop") && <button onClick={() => applyReform(s)}>{s.type === "move" ? "Move" : "Drop"}</button>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button className="sa-commit" disabled={!fit || fit.placed.length === 0} onClick={commit}>Add {toAdd.length > 1 ? `${toAdd.length} courses` : fmt(picked)} to plan</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AuditCard({ program, snapshot, completedSet, ipSet, onResync, syncing, onDetailed }) {
   // capped progress: over-fulfilled categories don't inflate the percentage
   const { earned, total, pct } = degreeProgress(program, completedSet, ipSet);
@@ -1836,6 +1961,10 @@ export default function App() {
   const [inProgress, setInProgress] = useState([]);
   const [chosen, setChosen] = useState([]);
   const [schedule, setSchedule] = useState({});
+  // Multiple saved plan scenarios. `chosen`/`schedule` above are the ACTIVE plan's
+  // working state; `plans` holds every scenario. completed/in-progress are shared.
+  const [plans, setPlans] = useState([{ id: "default", name: "My plan", chosen: [], schedule: {} }]);
+  const [activePlanId, setActivePlanId] = useState("default");
   const [snapshot, setSnapshot] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -1854,10 +1983,13 @@ export default function App() {
   const [detailSource, setDetailSource] = useState(null); // a program audit entry, or null = current snapshot
   const openDetail = (src) => { setDetailSource(src || null); setShowDesign(false); setShowAccount(false); setShowDetail(true); };
   const [courseDetailId, setCourseDetailId] = useState(null); // course id for the DawgPath details page
+  const [smartAdd, setSmartAdd] = useState(null); // null | { presetId } — Smart Add dialog
   useEffect(() => {
     const h = (e) => setCourseDetailId(e.detail);
+    const sa = (e) => setSmartAdd({ presetId: e.detail || null });
     window.addEventListener("lp-open-course", h);
-    return () => window.removeEventListener("lp-open-course", h);
+    window.addEventListener("lp-smart-add", sa);
+    return () => { window.removeEventListener("lp-open-course", h); window.removeEventListener("lp-smart-add", sa); };
   }, []);
   // ---- URL-hash routing ----------------------------------------------------
   // Every screen is its own history entry, so a page refresh restores the same
@@ -1984,9 +2116,9 @@ export default function App() {
   useEffect(() => {
     try {
       const majorName = (MAJOR_CATALOG.find((m) => m.id === majorId) || {}).name || "";
-      localStorage.setItem("lp_plan", JSON.stringify({ chosen, completed, inProgress, schedule, majorId, majorName, minorIds, bookmarks }));
+      localStorage.setItem("lp_plan", JSON.stringify({ chosen, completed, inProgress, schedule, majorId, majorName, minorIds, bookmarks, plans: plansSynced(), activePlanId }));
     } catch { /* ignore */ }
-  }, [chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks]);
+  }, [chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks, plans, activePlanId]);
 
   // Load the comprehensive UW program catalog (scraped from DARS by the extension)
   // and merge it into the pickers so every major/minor variant is selectable.
@@ -2017,12 +2149,19 @@ export default function App() {
     (async () => {
       const [plan, snap] = await Promise.all([getPlan(token), getSnapshot(token)]);
       if (plan) {
-        if (plan.chosen?.length) setChosen(plan.chosen);
+        const cleanSched = (s) => { const clean = {}; for (const k in (s || {})) { const v = s[k]; if (typeof v === "number" && v > 5000) clean[k] = v; } return clean; };
         if (plan.completed?.length) setCompleted(plan.completed);
         if (plan.inProgress?.length) setInProgress(plan.inProgress);
-        if (plan.schedule) { // drop stale index-format values from older plans
-          const clean = {}; for (const k in plan.schedule) { const v = plan.schedule[k]; if (typeof v === "number" && v > 5000) clean[k] = v; }
-          if (Object.keys(clean).length) setSchedule(clean);
+        // Restore saved plan scenarios (or migrate an old single plan into "My plan").
+        if (Array.isArray(plan.plans) && plan.plans.length) {
+          const ps = plan.plans.map((p) => ({ id: p.id, name: p.name || "Plan", chosen: p.chosen || [], schedule: cleanSched(p.schedule) }));
+          setPlans(ps);
+          const act = ps.find((p) => p.id === plan.activePlanId) || ps[0];
+          setActivePlanId(act.id); setChosen(act.chosen); setSchedule(act.schedule);
+        } else {
+          const ch = plan.chosen || []; const sc = cleanSched(plan.schedule);
+          setChosen(ch); setSchedule(sc);
+          setPlans([{ id: "default", name: "My plan", chosen: ch, schedule: sc }]); setActivePlanId("default");
         }
         if (plan.majorId) { registerMajor(plan.majorId, plan.majorName); setMajorId(plan.majorId); }
         if (Array.isArray(plan.minorIds)) setMinorIds(plan.minorIds);
@@ -2037,9 +2176,9 @@ export default function App() {
   useEffect(() => {
     if (!token || !loaded) return;
     const majorName = (MAJOR_CATALOG.find((m) => m.id === majorId) || {}).name || "";
-    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, majorName, minorIds, bookmarks }), 600);
+    const t = setTimeout(() => savePlan(token, { chosen, completed, inProgress, schedule, majorId, majorName, minorIds, bookmarks, plans: plansSynced(), activePlanId }), 600);
     return () => clearTimeout(t);
-  }, [token, loaded, chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks]);
+  }, [token, loaded, chosen, completed, inProgress, schedule, majorId, minorIds, bookmarks, plans, activePlanId]);
 
   async function handleSignIn(profile) {
     if (backendOnline) { try { const { token: tk, user: u } = await devLogin(profile); setUser(u); setToken(tk); return; } catch { /* local */ } }
@@ -2153,6 +2292,27 @@ export default function App() {
   const addChosen = (id) => setChosen((p) => p.includes(id) ? p : [...p, id]);
   const removeChosen = (id) => setChosen((p) => p.filter((x) => x !== id));
 
+  // ---- multiple plan scenarios ----
+  // Snapshot the ACTIVE plan's live working state (chosen/schedule) back into `plans`.
+  const plansSynced = () => plans.map((p) => p.id === activePlanId ? { ...p, chosen, schedule } : p);
+  const switchPlan = (id) => {
+    if (id === activePlanId) return;
+    const synced = plansSynced(); const target = synced.find((p) => p.id === id); if (!target) return;
+    setPlans(synced); setChosen(target.chosen || []); setSchedule(target.schedule || {}); setActivePlanId(id);
+  };
+  const saveAsNewPlan = (name) => {
+    const np = { id: "plan_" + Date.now().toString(36), name: (name || "").trim() || `Plan ${plans.length + 1}`, chosen: [...chosen], schedule: { ...schedule } };
+    setPlans([...plansSynced(), np]); setActivePlanId(np.id); return np.id;
+  };
+  const renamePlan = (id, name) => setPlans((ps) => ps.map((p) => p.id === id ? { ...p, name: name || p.name } : p));
+  const deletePlan = (id) => {
+    if (plans.length <= 1) return;
+    const rest = plansSynced().filter((p) => p.id !== id); setPlans(rest);
+    if (activePlanId === id) { const t = rest[0]; setActivePlanId(t.id); setChosen(t.chosen || []); setSchedule(t.schedule || {}); }
+  };
+  const activePlanName = (plans.find((p) => p.id === activePlanId) || {}).name || "My plan";
+  const scenarios = { plans, activePlanId, activePlanName, switchPlan, saveAsNewPlan, renamePlan, deletePlan };
+
   // Ask the extension (via the backend queue) to auto-run DARS for a program we
   // don't have exact data for yet — so choosing a new major/minor pulls its real
   // requirements in the background, no manual audit needed.
@@ -2259,7 +2419,7 @@ export default function App() {
   const openDesign = (m = "plan") => { closeTransient(); setShowAccount(false); setShowDetail(false); setDesignMode(m); setShowDesign(true); };
   // When any full-screen overlay is open, the home layer is hidden so the single
   // persistent background (root <Sky/>) shows through it seamlessly.
-  const anyOverlay = showDesign || showAccount || showDetail || courseDetailId || detailReq || showHandoff;
+  const anyOverlay = showDesign || showAccount || showDetail || courseDetailId || detailReq || showHandoff || smartAdd;
   // Overlays are transparent (so the shared background shows through), so only the
   // TOP overlay may be visible — otherwise a lower one (e.g. the picker under Course
   // Details) bleeds through. Priority, top → bottom: course > detail > picker >
@@ -2329,7 +2489,7 @@ export default function App() {
         <div className="layout">
           <div className="plan-col">
             {view === "plan"
-              ? <PlanBoard program={program} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} addChosen={addChosen} courseTerms={courseTerms} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} />
+              ? <PlanBoard program={program} snapshot={snapshot} planIds={planIds} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} addChosen={addChosen} courseTerms={courseTerms} schedule={schedule} setSchedule={setSchedule} mode={mode} setMode={setMode} scenarios={scenarios} />
               : <Requirements major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet} toggleCompleted={toggleCompleted} removeChosen={removeChosen} onOpen={setDetailReq} />}
           </div>
           <div className="side">
@@ -2359,6 +2519,11 @@ export default function App() {
         <button onClick={() => setSchedule({})}>{I.undo}<span>Reset</span></button>
       </div>
 
+      {smartAdd && (
+        <SmartAddDialog presetId={smartAdd.presetId} program={program} chosen={chosen} schedule={schedule}
+          completedSet={completedSet} ipSet={ipSet} setChosen={setChosen} setSchedule={setSchedule}
+          onClose={() => setSmartAdd(null)} />
+      )}
       {detailReq && (
         <CategoryDetail req={detailReq} major={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen} covered={covPicker} onClose={() => window.history.back()} />
@@ -2371,7 +2536,7 @@ export default function App() {
       )}
       {showDesign && (
         <DesignStudio
-          boardProps={{ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode }}
+          boardProps={{ program, snapshot, planIds, completedSet, ipSet, chosenSet, addChosen, courseTerms, schedule, setSchedule, mode, setMode, scenarios }}
           program={program} completedSet={completedSet} ipSet={ipSet} chosenSet={chosenSet}
           addChosen={addChosen} removeChosen={removeChosen}
           mode={designMode} setMode={setDesignMode}

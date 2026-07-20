@@ -107,9 +107,9 @@ app.get("/api/me", auth, async (req, res) => {
 // ---- plan (saved server-side → syncs across devices) -----------------------
 app.get("/api/plan", auth, async (req, res) => res.json(await getPlan(req.user.sub)));
 app.put("/api/plan", auth, async (req, res) => {
-  const { chosen, schedule, completed, inProgress, majorId, majorName, minorIds, bookmarks } = req.body || {};
+  const { chosen, schedule, completed, inProgress, majorId, majorName, minorIds, bookmarks, plans, activePlanId } = req.body || {};
   const prev = (await getPlan(req.user.sub)) || {};
-  res.json(await savePlan(req.user.sub, { ...prev, chosen, schedule, completed, inProgress, majorId, majorName, minorIds, bookmarks }));
+  res.json(await savePlan(req.user.sub, { ...prev, chosen, schedule, completed, inProgress, majorId, majorName, minorIds, bookmarks, plans, activePlanId }));
 });
 
 // ---- Program catalog (the full UW major/minor list, scraped by the extension
