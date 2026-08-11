@@ -1302,13 +1302,26 @@ function CourseDetailsPage({ courseId, onClose }) {
   const [selBar, setSelBar] = useState(null);   // clicked grade bar → { gpa, count, pct }
   const [refreshKey, setRefreshKey] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [autoTries, setAutoTries] = useState(0);   // silent background retries
+  const [sessionDead, setSessionDead] = useState(false);
+  useEffect(() => { const onKey = (e) => { if (e.key === "Escape") onClose(); }; window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey); }, [onClose]);
+  const isEmpty = (d) => d === null || !(d.gpaDistro && d.gpaDistro.some((g) => g && g.gpa != null));
   useEffect(() => {
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    let live = true; fetchCourseDetails(courseId).then((d) => { if (live) { setData(d); setRefreshing(false); } });
-    return () => { live = false; window.removeEventListener("keydown", onKey); };
-  }, [courseId, onClose, refreshKey]);
-  const refreshSeats = () => { setRefreshing(true); setRefreshKey((k) => k + 1); };
+    let live = true;
+    fetchCourseDetails(courseId).then((d) => {
+      if (!live) return;
+      setData(d); setRefreshing(false);
+      // Empty/failed result is usually a MyPlan/DawgPath sign-in issue, not real
+      // "no data". Retry quietly a couple of times before surfacing anything; if it
+      // still fails, check whether the UW session is actually alive.
+      if (isEmpty(d)) {
+        if (autoTries < 2) setTimeout(() => { if (live) { setAutoTries((n) => n + 1); setRefreshKey((k) => k + 1); } }, 1400);
+        else checkMyPlanSession().then((s) => { if (live) setSessionDead(!s.ok && s.reason !== "no-extension"); });
+      } else setSessionDead(false);
+    });
+    return () => { live = false; };
+  }, [courseId, refreshKey]); // eslint-disable-line
+  const refreshSeats = () => { setRefreshing(true); setAutoTries(0); setSessionDead(false); setRefreshKey((k) => k + 1); };
   const local = COURSES[courseId.replace(/\s+/g, "")];
   const fmtId = courseId.replace(/([A-Z])(\d)/, "$1 $2");
   const subj = fmtId.split(/\s+/)[0];
@@ -1336,16 +1349,22 @@ function CourseDetailsPage({ courseId, onClose }) {
           <div className="ds-actions"><button className="page-close" onClick={onClose}>✕ Close</button><div className="ds-hint">or press Esc · slide left for the menu</div></div>
         </div>
 
-        {data === undefined && <div className="cd-loading island"><span className="ap-spin" /> Loading course info from DawgPath…</div>}
-        {data === null && (
+        {(data === undefined || (isEmpty(data) && autoTries < 2)) && <div className="cd-loading island"><span className="ap-spin" /> Loading course info from DawgPath…{autoTries > 0 ? " (retrying)" : ""}</div>}
+        {data === null && autoTries >= 2 && (
           <div className="island set-card" style={{ maxWidth: 640 }}>
-            <h3 className="set-h">Course information isn't available</h3>
-            <p className="set-note">DawgPath couldn't return data for this course (it needs your UW sign-in, and the extension must be active). You can check it directly:</p>
-            <div className="cd-links"><a className="cd-link" href={dawg} target="_blank" rel="noreferrer">Open on DawgPath ↗</a><a className="cd-link" href={myplan} target="_blank" rel="noreferrer">Open on MyPlan ↗</a></div>
+            <h3 className="set-h">Couldn't load this course</h3>
+            <p className="set-note">{sessionDead
+              ? "Your UW sign-in looks expired — that's almost always why this fails, not missing data. Sign in and retry:"
+              : "DawgPath didn't respond. This is usually a sign-in / sync hiccup rather than missing data. Try again, or sign in directly:"}</p>
+            <div className="cd-links">
+              <button className="cd-link myplan" onClick={refreshSeats}>↻ Retry</button>
+              <a className="cd-link" href={dawg} target="_blank" rel="noreferrer">Open DawgPath to sign in ↗</a>
+              <a className="cd-link" href={myplan} target="_blank" rel="noreferrer">Open MyPlan ↗</a>
+            </div>
           </div>
         )}
 
-        {data && (
+        {data && !(isEmpty(data) && autoTries < 2) && (
           <div className="cd-scroll">
             <div className="cd-cols">
               <section className="island cd-panel">
@@ -1409,7 +1428,17 @@ function CourseDetailsPage({ courseId, onClose }) {
                     </div>
                     <div className="gd-axis"><span>0.0</span><span>1.0</span><span>2.0</span><span>3.0</span><span>4.0</span></div>
                   </div>
-                ) : <p className="cd-desc">No grade data recorded for this course.</p>}
+                ) : (
+                  <div className="gd-empty">
+                    <p className="cd-desc">{sessionDead
+                      ? "Couldn't load grades — your DawgPath/MyPlan sign-in looks expired. This isn't missing data; sign in and retry."
+                      : "No grade distribution came back. This is usually a DawgPath sign-in issue rather than a course with no grades (those are rare)."}</p>
+                    <div className="cd-links" style={{ marginTop: 10 }}>
+                      <button className="cd-link myplan" onClick={refreshSeats} disabled={refreshing}>{refreshing ? "Retrying…" : "↻ Retry"}</button>
+                      <a className="cd-link" href={dawg} target="_blank" rel="noreferrer">Open DawgPath to sign in ↗</a>
+                    </div>
+                  </div>
+                )}
               </section>
             </div>
 
@@ -2153,8 +2182,9 @@ export default function App() {
         if (plan.completed?.length) setCompleted(plan.completed);
         if (plan.inProgress?.length) setInProgress(plan.inProgress);
         // Restore saved plan scenarios (or migrate an old single plan into "My plan").
-        if (Array.isArray(plan.plans) && plan.plans.length) {
-          const ps = plan.plans.map((p) => ({ id: p.id, name: p.name || "Plan", chosen: p.chosen || [], schedule: cleanSched(p.schedule) }));
+        const validPlans = Array.isArray(plan.plans) ? plan.plans.filter((p) => p && typeof p === "object" && p.id) : [];
+        if (validPlans.length) {
+          const ps = validPlans.map((p) => ({ id: p.id, name: p.name || "Plan", chosen: Array.isArray(p.chosen) ? p.chosen : [], schedule: cleanSched(p.schedule) }));
           setPlans(ps);
           const act = ps.find((p) => p.id === plan.activePlanId) || ps[0];
           setActivePlanId(act.id); setChosen(act.chosen); setSchedule(act.schedule);
@@ -2330,10 +2360,25 @@ export default function App() {
     if (!token) { setAuditToast("Sign in first to refresh from MyPlan."); return; }
     // force:true so it re-runs even though we already have this program's audit
     for (const b of items) { try { await enqueueAudit(token, { name: b.name, level: b.level, force: true }); } catch { /* */ } }
+    // Decide how to run it. The quiet hidden-tab path only works if the UW session
+    // is already alive; on a first connect (or an expired session) it silently
+    // fails and the bar hangs — so open MyPlan VISIBLY and let the student sign in.
+    const status = await checkMyPlanSession();
+    if (status.reason === "no-extension") {
+      setAuditToast("The Liquid extension isn't responding — enable it in Chrome, then try again.");
+      setTimeout(() => setAuditToast(""), 9000); return;
+    }
+    if (!snapshot || !status.ok) {
+      try { window.open("https://myplan.uw.edu/audit/#/degree", "_blank"); } catch { /* */ }
+      setAuditNeedsLogin(false); setAuditRunning(true); setAuditProgress(6); startAuditPolling();
+      setAuditToast("Opened MyPlan in a new tab — sign in there and your degree audit imports automatically. Numbers appear here when it's done.");
+      setTimeout(() => setAuditToast(""), 12000); return;
+    }
+    // Session is alive → run it quietly in a hidden tab that closes itself.
     try { window.postMessage({ source: "liquid", type: "lp-run-queue" }, "*"); } catch { /* */ }
     setAuditNeedsLogin(false); setAuditRunning(true); setAuditProgress(6);
     startAuditPolling();
-    setAuditToast("Refreshing from MyPlan in the background — a tab opens quietly and closes itself when done.");
+    setAuditToast("Refreshing from MyPlan in the background — no windows to manage.");
     setTimeout(() => setAuditToast(""), 9000);
   };
 
@@ -2464,9 +2509,9 @@ export default function App() {
         </div>
       )}
       <div className="dock-hotzone" aria-hidden />
-      {/* Dock auto-hides everywhere (consistent with Design Studio) and slides in
-          when the cursor reaches the left edge. */}
-      <div className="dock island tucked">
+      {/* Dock is always visible on the home/plan page; it only auto-hides (slides
+          away, reveal on hover) while a full-screen overlay is open. */}
+      <div className={`dock island ${anyOverlay ? "tucked" : ""}`}>
         <button className={view === "plan" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); closeTransient(); setView("plan"); }} title="Home">{I.home}</button>
         <button className={view === "catalog" && !showDesign && !showAccount && !showDetail ? "active" : ""} onClick={() => { setShowDesign(false); setShowAccount(false); setShowDetail(false); closeTransient(); setView("catalog"); }} title="Catalog">{I.search}</button>
         <button className={showDesign ? "active" : ""} onClick={() => openDesign("plan")} title="Design Studio">{I.pen}</button>
